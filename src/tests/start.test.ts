@@ -109,7 +109,7 @@ test("Launch electron app", async () => {
 
     // Close after finishing
     console.log("Closing app...")
-    electronApp.close() // await here not detecting close on Linux
+    await electronApp.close() // await here not detecting close on Linux
     await delay(2000)
     console.log("App closed!")
 

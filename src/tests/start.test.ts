@@ -110,11 +110,7 @@ test("Launch electron app", async () => {
 
     // Close after finishing
     console.log("Closing app...")
-    const awaitable = electronApp.close()
-    console.log("Taking screenshot")
-    await window.screenshot({ path: "test-output/screenshots/failed.png" })
-    console.log("Took screenshot")
-    await awaitable
+    await electronApp.close()
     console.log("App closed!")
 
     // tmpDataFolder.removeCallback()

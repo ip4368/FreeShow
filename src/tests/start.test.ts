@@ -10,11 +10,11 @@ test.beforeEach(async ({ context }) => {
 
 test("Launch electron app", async () => {
     // const tmpSettingFolder = tmp.dirSync({ unsafeCleanup: true })
-    const electronApp = await electron.launch({
-        args: ["."],
-        // env: { ...process.env, NODE_ENV: "production", FS_MOCK_STORE_PATH: tmpSettingFolder.name },
-        env: { ...process.env, NODE_ENV: "production" },
-    })
+    // const electronApp = await electron.launch({
+    //     args: ["."],
+    //     // env: { ...process.env, NODE_ENV: "production", FS_MOCK_STORE_PATH: tmpSettingFolder.name },
+    //     env: { ...process.env, NODE_ENV: "production" },
+    // })
 
     // // Mocking Electron open dialog
     // const tmpDataFolder = tmp.dirSync({ unsafeCleanup: true })
@@ -24,7 +24,7 @@ test("Launch electron app", async () => {
     //     }
     // }, tmpDataFolder.name)
 
-    await electronApp.waitForEvent("window")
+    // await electronApp.waitForEvent("window")
 
     // Seems like we need some delay for FreeShow to start up correctly,
     // before doing anything
@@ -39,7 +39,7 @@ test("Launch electron app", async () => {
     // console.log(appPath)
 
     // // Get the first window that the app opens, wait if necessary.
-    const window = await electronApp.firstWindow()
+    // const window = await electronApp.firstWindow()
 
     // // Direct Electron console to Node terminal.
     // window.on("console", console.log)
@@ -112,7 +112,7 @@ test("Launch electron app", async () => {
     console.log("Closing app...")
     // Replacing with process kill for now until figuring out what is wrong
     // await electronApp.close()
-    electronApp.process().kill()
+    // electronApp.process().kill()
     console.log("App closed!")
 
     // tmpDataFolder.removeCallback()

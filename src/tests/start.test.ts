@@ -110,7 +110,9 @@ test("Launch electron app", async () => {
 
     // Close after finishing
     console.log("Closing app...")
-    await electronApp.close()
+    const awaitable = electronApp.close()
+    electronApp.process().kill()
+    await awaitable
     console.log("App closed!")
 
     // tmpDataFolder.removeCallback()

@@ -1,6 +1,6 @@
 import os from "os"
 import Slideshow from "slideshow"
-import { getMainWindow, isProd, toApp } from "../.."
+import { getMainWindow, toApp } from "../.."
 import { MAIN } from "../../../types/Channels"
 import { OutputHelper } from "../OutputHelper"
 import { OutputValues } from "../helpers/OutputValues"
@@ -92,7 +92,7 @@ async function initPresentation(path: string, program: string = "powerpoint") {
     }
 
     try {
-        currentSlideshow = new Slideshow(program, isProd)
+        currentSlideshow = new Slideshow(program)
     } catch (err) {
         if (err.includes("unsupported platform")) {
             toApp(MAIN, { channel: "ALERT", data: "Presentation app could not start, try opening it manually!" })

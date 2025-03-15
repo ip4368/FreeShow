@@ -23,6 +23,7 @@ const inspectorConfig = {
 
 export default [
     mainApp(),
+    webEditorPreload(),
     webServer("remote", { typescript: true }),
     webServer("stage"),
     webServer("controller"),
@@ -153,6 +154,25 @@ function webServer(id, options = {}) {
 
             copy({
                 targets: webFiles(id),
+            }),
+        ],
+    }
+}
+
+function webEditorPreload() {
+    return {
+        input: "src/frontend/editor_preload.ts",
+        output: {
+            sourcemap: !production,
+            format: "iife",
+            name: "freeshow_editor_preload",
+            file: "public/build/preload.js",
+        },
+        plugins: [
+            typescript({
+                tsconfig: './src/frontend/tsconfig_editor_preload.json',
+                sourceMap: !production,
+                inlineSources: !production,
             }),
         ],
     }

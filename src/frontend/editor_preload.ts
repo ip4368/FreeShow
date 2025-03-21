@@ -9,6 +9,11 @@ class APIHooks {
     pendingReceive: { [key: string]: any[] }
 
     constructor(socket: Socket) {
+        let url = new URL(document.URL)
+        const params = new URLSearchParams(url.search)
+        const namespace = params.get("namespace") ?? "default"
+        socket.emit("setNamespace", namespace)
+
         this.handler = {}
         this.send = (channel: string, data?: any) => {
             console.log("Received from send channel", channel, data)

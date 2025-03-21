@@ -17,10 +17,15 @@ app.use("/", express.static(path.join(__dirname, "../../public")))
 io.on("connection", (socket) => {
     console.log("a user connected")
 
-    socket.emit("receive", { channel: "STARTUP", data: { channel: "TYPE", data: "main" } })
+    let namespace: string
+
+    socket.on("setNamespace", (namespace_local: string) => {
+        namespace = namespace_local
+        socket.emit("receive", { channel: "STARTUP", data: { channel: "TYPE", data: "main" } })
+    })
 
     socket.on("send", (message) => {
-        console.log(message)
+        console.log("namespace", namespace, message)
     })
 
     socket.on("disconnect", () => {

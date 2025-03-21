@@ -1,3 +1,0 @@
-{
-  "extends": "./src/editor_server/tsconfig.json"
-}

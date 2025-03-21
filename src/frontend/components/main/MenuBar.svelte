@@ -30,6 +30,7 @@
     }
 
     const click = (e: MouseEvent) => {
+        console.log(e)
         if (e.target?.closest(".menu") || e.target?.closest(".menus")) return
 
         topContextActive.set(false)

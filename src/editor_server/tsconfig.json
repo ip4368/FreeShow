@@ -1,12 +1,13 @@
 {
-    "extends": "@tsconfig/svelte/tsconfig.json",
     "compilerOptions": {
-        "types": ["node", "svelte"],
+        "outDir": "../../build",
+        "target": "ES2015",
+        "module": "commonjs",
         "sourceMap": true,
-        "target": "ESNext",
         "stripInternal": true,
-        // "strict": true,
-        // "noImplicitAny": true,
+        "lib": ["es2015", "esnext", "dom"],
+        "moduleResolution": "node",
+        "noImplicitAny": true,
         "strictNullChecks": true,
         "strictFunctionTypes": true,
         "noImplicitThis": true,
@@ -19,8 +20,9 @@
         "emitDecoratorMetadata": true,
         "experimentalDecorators": true,
         "esModuleInterop": true,
-        "isolatedModules": true
+        "isolatedModules": false,
+        "skipLibCheck": true
     },
     "include": ["."],
-    "exclude": ["node_modules/*", "__sapper__/*", "public/*"]
+    "exclude": ["node_modules"]
 }

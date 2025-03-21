@@ -17,6 +17,8 @@ import { OPEN_FILE } from "./../../types/Channels"
 import { mainWindow, toApp } from "./../index"
 import { getAllShows, trimShow } from "./shows"
 
+type FileStats = { path: string; stat: Stats; extension: string; folder: boolean }
+
 function actionComplete(err: Error | null, actionFailedMessage: string) {
     if (err) console.error(actionFailedMessage + ":", err)
 }
@@ -116,7 +118,7 @@ export function renameFile(p: string, oldName: string, newName: string) {
     fs.rename(oldPath, newPath, (err) => actionComplete(err, "Could not rename file"))
 }
 
-export function getFileStats(p: string, disableLog: boolean = false) {
+export function getFileStats(p: string, disableLog: boolean = false): FileStats | null {
     try {
         const stat: Stats = fs.statSync(p)
         return { path: p, stat, extension: path.extname(p).substring(1).toLowerCase(), folder: stat.isDirectory() }
@@ -283,11 +285,11 @@ export function getFolderContent(data: any) {
     let files: any[] = []
     for (const name of fileList) {
         let p: string = path.join(folderPath, name)
-        let stats: any = getFileStats(p)
+        let stats: FileStats | null = getFileStats(p)
         if (stats) files.push({ ...stats, name, thumbnailPath: !data.disableThumbnails && isMedia() ? createThumbnail(p) : "" })
 
         function isMedia() {
-            if (stats.folder) return false
+            if (stats == null || stats?.folder) return false
             return [...imageExtensions, ...videoExtensions].includes(stats.extension.toLowerCase())
         }
     }
@@ -298,8 +300,8 @@ export function getFolderContent(data: any) {
     }
 
     // get first "layer" of files inside folder for searching
-    let filesInFolders: string[] = []
-    let folderFiles: any = {}
+    let filesInFolders: (FileStats & { name: string })[] = []
+    let folderFiles: { [key: string]: (FileStats & { name: string })[] } = {}
     if (data.listFilesInFolders) {
         let folders: any[] = files.filter((a) => a.folder)
         folders.forEach(getFilesInFolder)
@@ -312,7 +314,7 @@ export function getFolderContent(data: any) {
 
         for (const name of fileList) {
             let p: string = path.join(folder.path, name)
-            let stats: any = getFileStats(p)
+            let stats: FileStats | null = getFileStats(p)
             if (!stats) return
 
             if (!stats.folder) filesInFolders.push({ ...stats, name })

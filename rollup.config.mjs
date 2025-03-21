@@ -9,6 +9,7 @@ import serve from "rollup-plugin-serve"
 import svelte from "rollup-plugin-svelte"
 import startSvelteInspector from "svelte-inspector"
 import sveltePreprocess from "svelte-preprocess"
+import nodePolyfills from 'rollup-plugin-polyfill-node';
 
 const production = !process.env.ROLLUP_WATCH
 
@@ -168,12 +169,16 @@ function webEditorPreload() {
             name: "freeshow_editor_preload",
             file: "public/build/preload.js",
         },
+        shimMissingExports: true,
         plugins: [
             typescript({
                 tsconfig: './src/frontend/tsconfig_editor_preload.json',
                 sourceMap: !production,
                 inlineSources: !production,
             }),
+            resolve(),
+            commonjs(),
+            nodePolyfills(),
         ],
     }
 }

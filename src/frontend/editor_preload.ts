@@ -56,6 +56,10 @@ const api_hooks = new APIHooks(
     })
 )
 window.api = api_hooks
+
+// Override browser right click
 document.addEventListener("contextmenu", (event) => event.preventDefault())
+
+// TODO: Override Cmd+s or Ctrl+s
 
 export {}

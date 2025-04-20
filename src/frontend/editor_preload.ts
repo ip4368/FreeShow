@@ -9,14 +9,19 @@ class APIHooks {
     pendingReceive: { [key: string]: any[] }
 
     constructor(socket: Socket) {
+        socket.on("connect_error", (err) => {
+            console.log(`connect_error due to ${err.message}`)
+        })
+        console.log(socket.active, socket.connected, socket.connect())
         let url = new URL(document.URL)
         const params = new URLSearchParams(url.search)
         const namespace = params.get("namespace") ?? "default"
-        socket.emit("setNamespace", namespace)
-
+        socket.on("connect", () => {
+            socket.emit("setNamespace", namespace)
+        })
         this.handler = {}
         this.send = (channel: string, data?: any) => {
-            console.log("Received from send channel", channel, data)
+            console.log(`Received from send channel, payload size ${JSON.stringify(data).length}`, channel, data)
             socket.emit("send", { channel, data })
         }
         this.receive = (channel: string, func: any, _id?: string) => {
@@ -31,7 +36,6 @@ class APIHooks {
         this.removeListener = (_channel: string, _id: string) => {}
         this.showFilePath = (_file: File) => ""
         this.pendingReceive = {}
-
         socket.on("receive", ({ channel, data }) => {
             console.log(channel, data)
             const handler = this.handler[channel]
@@ -46,7 +50,11 @@ class APIHooks {
     }
 }
 
-const api_hooks = new APIHooks(io())
+const api_hooks = new APIHooks(
+    io({
+        // transports: ["websocket"],
+    })
+)
 window.api = api_hooks
 document.addEventListener("contextmenu", (event) => event.preventDefault())
 

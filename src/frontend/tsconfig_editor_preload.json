@@ -3,7 +3,7 @@
     "compilerOptions": {
         "types": ["node", "svelte"],
         "sourceMap": true,
-        "target": "ESNext",
+        "target": "es2021",
         "stripInternal": true,
         // "strict": true,
         // "noImplicitAny": true,

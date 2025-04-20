@@ -176,7 +176,9 @@ function webEditorPreload() {
                 sourceMap: !production,
                 inlineSources: !production,
             }),
-            resolve(),
+            resolve({
+                browser: true,
+            }),
             commonjs(),
             nodePolyfills(),
         ],

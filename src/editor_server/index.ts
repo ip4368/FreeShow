@@ -26,6 +26,51 @@ app.use("/", express.static(path.join(__dirname, "../../public")))
 //     console.log(err.context) // some additional error context
 // })
 
+type StoreMessage = {
+    channel: "STORE"
+    data: {
+        path: string | null | undefined
+        dataPath: string
+        SETTINGS: {}
+        SYNCED_SETTINGS: {}
+        SHOWS: {}
+        STAGE_SHOWS: {}
+        PROJECTS: {}
+        OVERLAYS: {}
+        TEMPLATES: {}
+        EVENTS: {}
+        MEDIA: {}
+        THEMES: {}
+        DRIVE_API_KEY: {}
+        showsCache: {}
+        scripturesCache: {}
+        deletedShows: any[]
+        renamedShows: any[]
+        CACHE: {}
+        HISTORY: {}
+        USAGE: {}
+        closeWhenFinished: boolean
+        customTriggers: {}
+    }
+}
+
+type MainChannel = {
+    channel: "MAIN"
+    data: { channel: "VERSION" | "IS_DEV" | "GET_OS" | "GET_TEMP_PATHS" | "DEVICE_ID" | "MAXIMIZED" | "DISPLAY" | "PCO_STARTUP_LOAD"; data: any }
+}
+
+type OutputMessage = {
+    channel: "OUTPUT"
+    data: {}
+}
+
+type StageMessage = {
+    channel: "STAGE"
+    data: {}
+}
+
+type BaseMessage = StoreMessage | OutputMessage | StageMessage | MainChannel
+
 io.on("connection", (socket) => {
     console.log("a user connected")
 
@@ -36,8 +81,20 @@ io.on("connection", (socket) => {
         socket.emit("receive", { channel: "STARTUP", data: { channel: "TYPE", data: "main" } })
     })
 
-    socket.on("send", (message) => {
-        console.log("namespace", namespace, message)
+    socket.on("send", (message: BaseMessage) => {
+        switch (message.channel) {
+            case "STORE":
+                console.log("namespace", namespace, "parsed STORE message", message)
+                break
+            case "MAIN":
+                console.log("namespace", namespace, "parsed MAIN message", message)
+                break
+            case "STAGE":
+            case "OUTPUT":
+                return
+            default:
+                console.log("namespace", namespace, message)
+        }
     })
 
     socket.on("disconnect", () => {

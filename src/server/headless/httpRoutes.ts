@@ -8,6 +8,7 @@ import path from "path"
 import { doesPathExist } from "../../shared/data/fsCore"
 import { HEADLESS_CAPABILITIES } from "../../shared/platform/capabilities"
 import { registerMediaRoutes } from "./mediaRoutes"
+import { registerThumbnailRoutes } from "./thumbnailRoutes"
 
 export function getWebDir(): string {
     if (process.env.FREESHOW_WEB_DIR) return process.env.FREESHOW_WEB_DIR
@@ -34,6 +35,7 @@ export function registerHttpRoutes(app: Express) {
 
     // Feature routes must be registered before the SPA fallback below.
     registerMediaRoutes(app)
+    registerThumbnailRoutes(app)
 
     if (doesPathExist(webDir)) {
         // built web bundle takes priority (its index.html + hashed /assets/*)

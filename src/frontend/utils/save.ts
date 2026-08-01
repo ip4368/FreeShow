@@ -8,6 +8,7 @@ import { stopMediaRecorder } from "../components/drawer/live/recorder"
 import { stopAllInteractions } from "../components/drawer/pages/interactions"
 import { clone, keysToID, removeDeleted } from "../components/helpers/array"
 import { isOutCleared, updateSyncedOutputs } from "../components/helpers/output"
+import { isSocketTransport } from "../IPC/transport"
 import { sendMain } from "../IPC/main"
 import {
     actionTags,
@@ -211,6 +212,16 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
     Object.entries(getSyncedSettings()).forEach(([key, store]) => {
         syncedSettings[key] = get(store)
     })
+
+    // On a remote client the media/audio library belongs to the SERVER, so persist the
+    // folder lists there (SYNCED_SETTINGS is remote) instead of into this machine's
+    // local SETTINGS — that way they survive restarts and reach other clients.
+    if (isSocketTransport()) {
+        syncedSettings.mediaFolders = settings.mediaFolders
+        syncedSettings.audioFolders = settings.audioFolders
+        delete settings.mediaFolders
+        delete settings.audioFolders
+    }
 
     const allSavedData: SaveData = {
         // SETTINGS

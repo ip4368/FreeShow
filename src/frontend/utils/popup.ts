@@ -70,6 +70,7 @@ import OutputSelector from "../components/main/popups/OutputSelector.svelte"
 import OutputSetup from "../components/main/popups/OutputSetup.svelte"
 import PcoServicePicker from "../components/main/popups/PcoServicePicker.svelte"
 import RegexManager from "../components/main/popups/RegexManager.svelte"
+import RemoteFolderPicker from "../components/main/popups/RemoteFolderPicker.svelte"
 import Rename from "../components/main/popups/Rename.svelte"
 import ResetAll from "../components/main/popups/ResetAll.svelte"
 import Restore from "../components/main/popups/Restore.svelte"
@@ -185,7 +186,8 @@ export const popups: { [key in Popups]: ComponentType } = {
     sync_folders: SyncFolders,
     node_options: NodeOptions,
     ai_model_manager: AiModelManager,
-    ai_chat: AiChat
+    ai_chat: AiChat,
+    remote_folder: RemoteFolderPicker
 }
 
 export function waitForPopupData(popupId: Popups): Promise<any> {

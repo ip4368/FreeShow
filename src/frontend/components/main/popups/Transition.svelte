@@ -34,7 +34,7 @@
 
     // UPDATE
 
-    function changeTransition(id: TransitionTypes, key: "type" | "duration" | "easing" | "fadeInOffset" | "custom", value: any, reset = false) {
+    function changeTransition(id: TransitionTypes, key: "type" | "duration" | "easing" | "fadeInOffset" | "custom" | "unmatchedIn" | "unmatchedOut", value: any, reset = false) {
         if (key === "duration") value = Number(value)
 
         if ($popupData.trigger) {
@@ -112,7 +112,7 @@
 
     // let updated: string[] = []
     // let updatedTimeout: NodeJS.Timeout | null = null
-    function updateSpecific(data: Transition, key: "type" | "duration" | "easing" | "fadeInOffset" | "custom", value: any, reset = false) {
+    function updateSpecific(data: Transition, key: "type" | "duration" | "easing" | "fadeInOffset" | "custom" | "unmatchedIn" | "unmatchedOut", value: any, reset = false) {
         if (!enableSpecific) {
             return { ...data, [key]: value }
         }
@@ -267,6 +267,9 @@
         { value: "top_bottom", label: translateText("edit.top_bottom") }
     ]
 
+    // morph unmatched enter/exit options (any transition type except morph itself)
+    const unmatchedOptions = transitionTypes.filter((t) => t.id !== "morph").map((t) => ({ value: t.id, label: translateText(t.name) }))
+
     $: slideDirection = currentTransition.custom?.direction || slideTypes[0].value
     const getCorrectedDirection = (value: string, _updater: any = null) => {
         // Svelte uses the inverse of the In for the out, so it makes sense to invert this
@@ -307,11 +310,11 @@
 <!-- TYPE -->
 
 <div class="types">
-    {#each transitionTypes as type}
+    {#each transitionTypes.filter((t) => t.id !== "morph" || (!isItem && selectedType === "text")) as type}
         {@const isActive = type.id === currentTransition.type}
         <MaterialButton showOutline={isActive} {isActive} style={type.id === "none" ? "font-style: italic;" : ""} on:click={() => changeTransition(selectedType, "type", type.id)}>
             <svg viewBox="0 0 100 100" width="{iconSize}pt" height="{iconSize}pt">
-                {@html icons[type.id]}
+                {@html icons[type.id] || icons.scale}
             </svg>
             <T id={type.name} />
         </MaterialButton>
@@ -320,6 +323,14 @@
 
 {#if currentTransition.type === "slide"}
     <MaterialDropdown label="transition.direction" style="margin-bottom: 10px;" options={slideTypes} value={correctedSlideDirection} on:change={(e) => changeTransition(selectedType, "custom", { ...(currentTransition.custom || {}), direction: getCorrectedDirection(e.detail) })} />
+{/if}
+
+<!-- MORPH: enter/exit effect for objects with no match across the two slides -->
+{#if currentTransition.type === "morph"}
+    <InputRow>
+        <MaterialDropdown label="transition.unmatched_in" options={unmatchedOptions} value={currentTransition.unmatchedIn ?? "fade"} on:change={(e) => changeTransition(selectedType, "unmatchedIn", e.detail)} />
+        <MaterialDropdown label="transition.unmatched_out" options={unmatchedOptions} value={currentTransition.unmatchedOut ?? "fade"} on:change={(e) => changeTransition(selectedType, "unmatchedOut", e.detail)} />
+    </InputRow>
 {/if}
 
 <InputRow>

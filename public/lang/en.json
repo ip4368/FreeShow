@@ -1585,6 +1585,9 @@
         "scale": "Scale",
         "spin": "Spin",
         "slide": "Slide",
+        "morph": "Morph",
+        "unmatched_in": "Unmatched in",
+        "unmatched_out": "Unmatched out",
         "fade_in_offset": "Fade in offset"
     },
     "easings": {

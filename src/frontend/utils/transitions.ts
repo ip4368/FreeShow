@@ -16,7 +16,8 @@ export const transitionTypes: { id: TransitionType; name: string }[] = [
     { id: "blur", name: "transition.blur" },
     { id: "spin", name: "transition.spin" },
     { id: "scale", name: "transition.scale" },
-    { id: "slide", name: "transition.slide" }
+    { id: "slide", name: "transition.slide" },
+    { id: "morph", name: "transition.morph" }
 ]
 
 export const transitions: { [key in TransitionType]: any } = {
@@ -53,7 +54,10 @@ export const transitions: { [key in TransitionType]: any } = {
             // scale(${t})
             css: (t: any) => `opacity: ${t * o}; transform: rotate(${t * 360}deg);`
         }
-    }
+    },
+    // morph is not a per-node css(t) transition; the real animation is handled in SlideContent (see morph/ modules).
+    // This marker keeps any accidental custom() call harmless (instant, no visual transition).
+    morph: (node, data) => fade(node, { ...data, duration: 0 })
 }
 
 export const easings: any[] = [

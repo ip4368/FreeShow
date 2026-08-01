@@ -101,6 +101,7 @@ export interface Slide {
 
 export interface Item {
     id?: string
+    morphLink?: string // id of the item on the previous slide this item should morph from (manual pairing for the morph transition)
     lines?: Line[]
     list?: List
     auto?: boolean // DEPRECATED - use textFit
@@ -417,6 +418,10 @@ export interface Transition {
     between?: TransitionData
     in?: TransitionData
     out?: TransitionData
+
+    // morph transition: enter/exit effect for objects that have no match across slides (default "fade")
+    unmatchedIn?: TransitionType
+    unmatchedOut?: TransitionType
 }
 
 export interface TransitionData {
@@ -637,5 +642,5 @@ export interface Tag {
 export type ID = string
 export type ItemType = "text" | "media" | "camera" | "timer" | "clock" | "button" | "events" | "weather" | "variable" | "web" | "icon" | "slide_tracker" | "visualizer" | "captions" | "metronome" | "current_output" | "chart" | "table" // "shape" | "video"
 export type ShowType = "DIVIDER" | "show" | "image" | "video" | "audio" | "player" | "section" | "overlay" | "effect" | "pdf" | "ppt" | "screen" | "ndi" | "camera" | "folder" | "show_placeholder" // "private"
-export type TransitionType = "none" | "blur" | "fade" | "crossfade" | "fly" | "scale" | "slide" | "spin"
+export type TransitionType = "none" | "blur" | "fade" | "crossfade" | "fly" | "scale" | "slide" | "spin" | "morph"
 export type MediaType = "media" | "video" | "image" | "effect" | "screen" | "ndi" | "camera" | "player" | "audio"

@@ -49,7 +49,8 @@ export function addItem(type: ItemType, id: string | null = null, options: any =
         style: getDefaultStyles(type, template),
         type
     }
-    if (id) newData.id = id
+    // always assign a stable id (used by the morph transition to match items across slides)
+    newData.id = id || uid()
 
     const currentItems = getEditItems()
     const itemsCount = currentItems.length

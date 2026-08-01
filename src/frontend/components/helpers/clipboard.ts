@@ -557,7 +557,8 @@ const pasteActions = {
                 const store = type === "overlay" ? overlays : templates
                 if (!get(store)[get(activeEdit).id!]) return
                 const currentItems = clone(get(store)[get(activeEdit).id!].items || [])
-                data.forEach((item) => currentItems.push(clone(item)))
+                // item-level clone must mint a fresh id so morph never matches two same-slide items (slide-level clone preserves ids)
+                data.forEach((item) => currentItems.push({ ...clone(item), id: uid() }))
                 history({ id: "UPDATE", newData: { key: "items", data: currentItems }, oldData: { id: get(activeEdit).id }, location: { page: "edit", id: type + "_items" } })
                 return
             }
@@ -567,7 +568,8 @@ const pasteActions = {
         const ref = getLayoutRef()[get(activeEdit).slide!]
         if (!ref) return
 
-        const items = data.map((item) => clone(item))
+        // item-level clone must mint a fresh id so morph never matches two same-slide items (slide-level clone preserves ids)
+        const items = data.map((item) => ({ ...clone(item), id: uid() }))
         history({ id: "UPDATE", newData: { data: items, key: "slides", keys: [ref.id], subkey: "items", index: -1 }, oldData: { id: get(activeShow)!.id }, location: { page: "edit", id: "show_key" } })
     },
     slide: (data: any, { index }: any = {}, isDuplicating: boolean = false) => {

@@ -29,6 +29,15 @@
         return result
     }
 
+    // NB: `?? tooltipDelay` rather than `|| tooltipDelay` — "0" is a valid, falsy override
+    function getDelay(target: HTMLElement) {
+        const attr = target.getAttribute("data-title-delay")
+        if (attr === null) return tooltipDelay
+
+        const parsedDelay = Number(attr)
+        return isNaN(parsedDelay) ? tooltipDelay : parsedDelay
+    }
+
     function showTooltip(target: HTMLElement, e: MouseEvent) {
         const title = target.getAttribute("data-title")
         if (!title) return
@@ -97,7 +106,9 @@
                     if (!timeout) visible = false
                     autoHideTimeout = null
                 }, autoHideDelay)
-            }, tooltipDelay)
+                // opt-in per element via data-title-delay (e.g. "0" for warnings that must not be
+                // discovered only after a pause). Absent attribute keeps the standard delay.
+            }, getDelay(target))
         }
     }
 

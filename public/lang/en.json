@@ -561,7 +561,8 @@
         "reset_all_confirm": "Are you sure you want to reset everything?",
         "reset_all_action": "This will reset the whole program, but not delete the .show files in your \"Shows\"-folder.",
         "quit": "Quit without saving",
-        "save_quit": "Save & Quit"
+        "save_quit": "Save & Quit",
+        "choose_morph_source": "Choose what this item morphs from"
     },
     "confirm": {
         "statement_slide_exists_layout": "Slide exists in a different layout!",
@@ -1143,7 +1144,8 @@
         "longRange": "Long range",
         "media_item_tip": "Are you trying to use the media as a background?",
         "convert_to_background": "Convert to background",
-        "convert_to_media_item": "Convert background to media item"
+        "convert_to_media_item": "Convert background to media item",
+        "morph": "Morph"
     },
     "items": {
         "text": "Textbox",
@@ -1774,5 +1776,17 @@
         "translation_description_multiline": "Adds all languages in a single textbox in alternating lines. (Like in Songbeamer)",
         "translation_description_textboxes": "Adds every language as a separate textbox to the slide.",
         "translation_description_layouts": "Creates a unique set of slides and a layout for every language."
+    },
+    "morph": {
+        "morph_from": "Morph from",
+        "previous_slide": "Previous slide",
+        "no_previous_slide": "This is the first slide, so there is nothing to morph from.",
+        "link_auto": "Automatic",
+        "link_none": "None (fade)",
+        "link_missing": "Missing item",
+        "link_taken": "Used by $1",
+        "override_warning": "$1 is already used by $2. Binding it here will remove that link.",
+        "override": "Override",
+        "link_taken_hint": "Already used by $1 — binding here will remove that link"
     }
 }

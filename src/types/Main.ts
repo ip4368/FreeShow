@@ -414,6 +414,7 @@ export type Popups =
     | "choose_chord"
     | "choose_screen"
     | "choose_camera"
+    | "choose_morph_source"
     | "choose_output_input"
     | "choose_output_type"
     | "choose_style"

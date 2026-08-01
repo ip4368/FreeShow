@@ -715,3 +715,16 @@ export const itemBoxes: Box2 = {
         })()
     }
 }
+
+/**
+ * "Morph from" — manual pairing for the morph transition (item.morphLink).
+ *
+ * Injected into every item type by BoxStyle rather than being listed per-type, and always visible:
+ * the transition can be switched to/from morph globally at any time, so hiding the control when the
+ * current slide happens not to use morph would make it come and go for no reason the user can see.
+ *
+ * Empty value = automatic matching (shared id, else index). See morphMatcher.
+ */
+export const morphSection: EditBoxSection = {
+    inputs: [[{ id: "morphLink", type: "popup", value: "", values: { label: "morph.morph_from", icon: "bind", popupId: "choose_morph_source", allowEmpty: true } }]]
+}

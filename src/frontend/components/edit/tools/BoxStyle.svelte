@@ -13,7 +13,8 @@
     import { getStyles } from "../../helpers/style"
     import { MAX_FONT_SIZE } from "../scripts/autosize"
     import { addFilterString, addStyle, addStyleString, getItemStyleAtPos, getItemText, getLastLineAlign, getLineText, getSelectionRange } from "../scripts/textStyle"
-    import { itemBoxes, setBoxInputValue } from "../values/boxes"
+    import { itemBoxes, morphSection, setBoxInputValue } from "../values/boxes"
+    import { MORPH_LINK_NONE, morphSourceLabel } from "../../output/transitions/morph/morphMatcher"
     import EditValues from "./EditValues.svelte"
 
     export let id: ItemType
@@ -254,6 +255,38 @@
 
     $: if (box?.sections?.CSS && id !== "captions") {
         setBoxInputValue(box, "CSS", "CSS_text", "value", style)
+    }
+
+    // MORPH: manual pairing (item.morphLink). Show slides only — overlays/templates never morph
+    // between slides. Always present when it applies, because the transition can be switched to or
+    // from morph globally at any time and a control that appears/disappears would be confusing.
+    $: if (box?.sections && ($activeEdit.type || "show") === "show" && !box.sections.morph) {
+        box.sections.morph = clone(morphSection)
+    }
+    $: if (box?.sections?.morph && (item || $activeEdit.items || $showsCache)) updateMorphInput()
+
+    function updateMorphInput() {
+        const link = item?.morphLink || ""
+        // a single source id cannot sensibly apply to several items at once
+        const multiple = $activeEdit.items.length > 1
+
+        setBoxInputValue(box, "morph", "morphLink", "disabled", multiple)
+        setBoxInputValue(box, "morph", "morphLink", "value", multiple ? "" : link)
+        setBoxInputValue(box, "morph", "morphLink", "values", { name: morphLinkName(link) })
+        box = box
+    }
+
+    // what the collapsed button reads; an id that no longer resolves shows as missing rather than
+    // silently looking linked (the matcher already falls through to id/index in that case)
+    function morphLinkName(link: string) {
+        if (!link) return ""
+        if (link === MORPH_LINK_NONE) return "morph.link_none"
+
+        const previousId = ($activeEdit.slide ?? 0) > 0 ? getLayoutRef()[($activeEdit.slide ?? 0) - 1]?.id : ""
+        const previousItems: Item[] = previousId ? $showsCache[$activeShow?.id || ""]?.slides?.[previousId]?.items || [] : []
+        const index = previousItems.findIndex((a) => a.id === link)
+
+        return index < 0 ? "morph.link_missing" : morphSourceLabel(previousItems[index], index)
     }
 
     $: if (box?.sections?.font) {

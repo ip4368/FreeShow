@@ -12,6 +12,7 @@ import ChangeIcon from "../components/main/popups/ChangeIcon.svelte"
 import ChangeOutputValues from "../components/main/popups/ChangeOutputValues.svelte"
 import ChooseCamera from "../components/main/popups/ChooseCamera.svelte"
 import ChooseChord from "../components/main/popups/ChooseChord.svelte"
+import ChooseMorphSource from "../components/main/popups/ChooseMorphSource.svelte"
 import ChooseOutput from "../components/main/popups/ChooseOutput.svelte"
 import OutputSetup from "../components/main/popups/OutputSetup.svelte"
 import ChooseScreen from "../components/main/popups/ChooseScreen.svelte"
@@ -111,6 +112,7 @@ export const popups: { [key in Popups]: ComponentType } = {
     regex_manager: RegexManager,
     choose_chord: ChooseChord,
     choose_camera: ChooseCamera,
+    choose_morph_source: ChooseMorphSource,
     player: CreatePlayer,
     rename: Rename,
     color: Color,

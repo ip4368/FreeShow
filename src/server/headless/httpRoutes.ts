@@ -7,6 +7,7 @@ import express from "express"
 import path from "path"
 import { doesPathExist } from "../../shared/data/fsCore"
 import { HEADLESS_CAPABILITIES } from "../../shared/platform/capabilities"
+import { registerMediaRoutes } from "./mediaRoutes"
 
 export function getWebDir(): string {
     if (process.env.FREESHOW_WEB_DIR) return process.env.FREESHOW_WEB_DIR
@@ -30,6 +31,9 @@ export function registerHttpRoutes(app: Express) {
 
     app.get("/health", (_req: Request, res: Response) => res.json({ ok: true }))
     app.get("/capabilities", (_req: Request, res: Response) => res.json(HEADLESS_CAPABILITIES))
+
+    // Feature routes must be registered before the SPA fallback below.
+    registerMediaRoutes(app)
 
     if (doesPathExist(webDir)) {
         // built web bundle takes priority (its index.html + hashed /assets/*)

@@ -11,6 +11,7 @@ import { requestMain, sendMain } from "../../IPC/main"
 import { audioFolders, cachePath, loadedMediaThumbnails, media, mediaFolders, special } from "../../stores"
 import { addToMediaFolder } from "../../utils/cloudSync"
 import { isMainWindow, newToast, wait, waitUntilValueIsDefined } from "../../utils/common"
+import { getServerMediaUrl, getServerThumbnailUrl, isGatewayUrl, isRemoteMedia } from "../../utils/mediaGateway"
 import { audioExtensions, imageExtensions, mediaExtensions, presentationExtensions, videoExtensions } from "../../values/extensions"
 import type { API_media, API_slide_thumbnail } from "../actions/api"
 import { clone } from "./array"
@@ -67,6 +68,8 @@ export function joinPath(path: string[]): string {
 export function isLocalFile(path: string): boolean {
     if (typeof path !== "string") return false
     if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:") || path.startsWith("blob:") || path.startsWith("freeshow-protected://")) return false
+    // an already-resolved media gateway URL (origin-relative on the web build)
+    if (isGatewayUrl(path)) return false
     return true
 }
 
@@ -74,6 +77,9 @@ export function isLocalFile(path: string): boolean {
 export function encodeFilePath(path: string): string {
     if (typeof path !== "string") return ""
     if (!isLocalFile(path)) return path
+
+    // remote clients (web / hybrid desktop) fetch library media from the server gateway
+    if (isRemoteMedia()) return getServerMediaUrl(path)
 
     if (path.startsWith("file://")) path = path.replace("file://", "")
     try {
@@ -207,6 +213,13 @@ export async function getMedia(path: string, size: number = mediaSize.drawerSize
             return finish(path, path)
         }
 
+        // Remote clients: the library media lives on the SERVER, so this machine can't
+        // locate it on disk. Skip the local lookup and use the path as-is — it resolves
+        // through the media gateway when rendered (see mediaGateway.ts).
+        if (isRemoteMedia()) {
+            return finish(path, path)
+        }
+
         // lessons
         // let thumbnailPath = getThumbnailPath(path, data.size)
         // // cache after it's downloaded
@@ -260,6 +273,7 @@ export async function getMediaCached(path: string, size: number = mediaSize.draw
 
 export async function locateMediaFile(path: string) {
     if (!path || typeof path !== "string") return null
+    if (isRemoteMedia()) return { path, hasChanged: false }
     if (!isLocalFile(path)) return { path, hasChanged: false }
     if (locatedMediaCache.has(path)) return locatedMediaCache.get(path)!
 
@@ -276,6 +290,7 @@ export async function locateMediaFile(path: string) {
 
 export async function doesMediaExist(path: string, noCache = false) {
     if (!path || typeof path !== "string") return false
+    if (isRemoteMedia()) return true
     if (!isLocalFile(path)) return true
     if (!noCache && mediaExistsCache.has(path)) return mediaExistsCache.get(path)!
 
@@ -436,6 +451,11 @@ export async function loadThumbnail(input: string, size: number = mediaSize.draw
     if (typeof input !== "string") return ""
     if (!isLocalFile(input)) return input
 
+    // Remote clients: thumbnails can't be generated locally for server media (the local
+    // GET_THUMBNAIL would fail and callers treat "" as a load failure). Serve the original
+    // through the gateway instead — server-side thumbnail generation is a future optimization.
+    if (isRemoteMedia()) return getServerThumbnailUrl(input, size)
+
     // already encoded (this could cause an infinite loop)
     if (input.includes("freeshow-cache") || input.includes("media-cache")) return input
 
@@ -452,6 +472,9 @@ export async function loadThumbnail(input: string, size: number = mediaSize.draw
 export function getThumbnailPath(input: string, size: number) {
     if (!input) return ""
     if (!isLocalFile(input)) return input
+
+    // remote clients have no local thumbnail cache; the server generates/caches thumbnails
+    if (isRemoteMedia()) return getServerThumbnailUrl(input, size)
 
     // already encoded
     if (input.includes("freeshow-cache") || input.includes("media-cache")) return input

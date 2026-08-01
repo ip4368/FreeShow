@@ -41,8 +41,11 @@
         // SET TRANSITION
         // globalTransition also has style & slide transition
         // priority: item > slide > style > global
-        let transition = itemTransition || globalTransition
-        if (transition?.type === "none") transition.duration = 0
+        // fall back to an empty object so a missing/null transition can't throw below (custom() then
+        // applies its own defaults) — startTransition runs during component init, so a throw here
+        // kills the whole component (and makes Svelte HMR unrecoverable).
+        let transition: any = itemTransition || globalTransition || {}
+        if (transition.type === "none") transition.duration = 0
 
         let inTransition = clone(transition.in || transition)
         let outTransition = clone(transition.out || transition)

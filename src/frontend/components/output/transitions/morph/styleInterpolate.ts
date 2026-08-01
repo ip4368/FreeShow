@@ -22,6 +22,17 @@ export function parseMorphStyle(style: string): StyleMap {
     return map
 }
 
+/**
+ * True if the style declares a non-empty `transform` (any function: rotate, rotateX tilt, scaleX flip,
+ * perspective, ...). Deliberately broader than a `rotate(` test — the editor writes all four
+ * (see edit/values/item.ts) and the word morph can represent none of them: it measures UNROTATED probes
+ * and lays the overlay out in flat slide space. Matches only a real `transform:` declaration, never the
+ * unrelated `text-transform:`.
+ */
+export function hasTransform(style: string | undefined): boolean {
+    return /(^|;)\s*transform\s*:\s*[^;]*\([^)]*\)/.test(style || "")
+}
+
 /** Extract the rotation (deg) from a transform string; 0 if none. Mirrors Movebox.svelte. */
 export function getRotationDeg(transform: string): number {
     const m = /rotate\((-?\d+(?:\.\d+)?)deg\)/.exec(transform || "")

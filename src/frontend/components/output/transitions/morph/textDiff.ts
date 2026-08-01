@@ -2,7 +2,22 @@
 // No Svelte/DOM deps → fast to unit test. See docs/plans/2026-07-29-word-text-morph-design.md.
 
 interface LineLike {
+    align?: string
     text?: { value?: string }[]
+}
+
+/**
+ * Signature of everything that positions glyphs INSIDE the box but is NOT part of `item.style`:
+ * `item.align` carries the vertical alignment (`align-items` on the flex container) and each
+ * `line.align` its line's horizontal alignment (`text-align`).
+ *
+ * The whole-box morph only interpolates `item.style`, so it renders B's alignment from frame 0 while
+ * the box is still at A's geometry — the text visibly jumps before the animation starts. Comparing
+ * signatures tells the caller the glyphs move even when the text is identical, so it should use the
+ * word-level morph (which measures real rendered positions in both A and B) instead.
+ */
+export function alignSignature(item: { align?: string; lines?: LineLike[] } | undefined): string {
+    return `${item?.align || ""}||${(item?.lines || []).map((line) => line?.align || "").join("|")}`
 }
 
 /** Flatten an item's lines into an ordered list of words (whitespace-separated), in reading order. */

@@ -12,8 +12,8 @@
     import SlideItemTransition from "../transitions/SlideItemTransition.svelte"
     import { easings } from "../../../utils/transitions"
     import { matchItems } from "../transitions/morph/morphMatcher"
-    import { interpolateStyle } from "../transitions/morph/styleInterpolate"
-    import { diffWords, extractWords } from "../transitions/morph/textDiff"
+    import { hasTransform, interpolateStyle } from "../transitions/morph/styleInterpolate"
+    import { alignSignature, diffWords, extractWords } from "../transitions/morph/textDiff"
     import { measureWords, type WordBox } from "../transitions/morph/wordMeasure"
     import WordMorphLayer from "../transitions/morph/WordMorphLayer.svelte"
 
@@ -395,12 +395,21 @@
         }
         match.pairs.forEach(({ aIndex, bIndex }) => {
             if ((bItems[bIndex]?.type || "text") !== "text") return
-            const rotated = /rotate\(/.test(aItems[aIndex]?.style || "") || /rotate\(/.test(bItems[bIndex]?.style || "")
-            if (rotated) return // rotated text → whole-box morph (v1)
+            // ANY transform (rotate, rotateX tilt, scaleX flip, perspective) → whole-box morph (v1).
+            // The probes below are rendered through stripRotation, which drops the whole transform, and
+            // the overlay is laid out in flat slide space — so a transformed item would animate untilted
+            // /unflipped. A plain /rotate\(/ test missed rotateX & scaleX and let those through.
+            if (hasTransform(aItems[aIndex]?.style) || hasTransform(bItems[bIndex]?.style)) return
             if (hasGradientText(aItems[aIndex]) || hasGradientText(bItems[bIndex])) return // gradient text → whole-box morph
             const aw = extractWords(aItems[aIndex]?.lines)
             const bw = extractWords(bItems[bIndex]?.lines)
-            if (aw.join(" ") === bw.join(" ")) return // text unchanged → whole-box morph handles it
+            // Alignment (item.align = vertical, line.align = horizontal) is NOT part of item.style, so the
+            // whole-box morph applies B's alignment from frame 0 while the box is still at A's geometry —
+            // the text jumps before the animation starts. Word morph measures the real rendered word
+            // positions in A and B, so it absorbs the alignment shift continuously.
+            const sameText = aw.join(" ") === bw.join(" ")
+            const sameAlign = alignSignature(aItems[aIndex]) === alignSignature(bItems[bIndex])
+            if (sameText && sameAlign) return // nothing moves inside the box → whole-box morph handles it
             wordActive[bIndex] = true
             wordAItem[bIndex] = aItems[aIndex]
             probes.push({ index: bIndex, which: "a", item: stripRotation(aItems[aIndex]) })

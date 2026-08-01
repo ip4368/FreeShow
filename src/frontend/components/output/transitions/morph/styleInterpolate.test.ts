@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest"
-import { computeFlipOrigin, computeFlipTransform, interpolateStyle, lerpColor, lerpNumberUnit, parseMorphStyle } from "./styleInterpolate"
+import { computeFlipOrigin, computeFlipTransform, hasTransform, interpolateStyle, lerpColor, lerpNumberUnit, parseMorphStyle } from "./styleInterpolate"
+
+describe("hasTransform", () => {
+    it("detects 2D rotation", () => {
+        expect(hasTransform("left:0px;transform: rotate(10deg);")).toBe(true)
+    })
+    it("detects tilt (rotateX), flip (scaleX) and perspective — all missed by a /rotate\\(/ test", () => {
+        expect(hasTransform("transform: rotateX(20deg);")).toBe(true)
+        expect(hasTransform("transform: scaleX(-1);")).toBe(true)
+        expect(hasTransform("transform: perspective(1000px) rotateX(20deg);")).toBe(true)
+    })
+    it("does NOT match the unrelated text-transform property", () => {
+        expect(hasTransform("text-transform: uppercase;")).toBe(false)
+        expect(hasTransform("font-size:20px;text-transform: capitalize;")).toBe(false)
+    })
+    it("is false for no transform, an empty one, or missing style", () => {
+        expect(hasTransform("left:0px;top:0px;width:10px;")).toBe(false)
+        expect(hasTransform("transform:;")).toBe(false)
+        expect(hasTransform("")).toBe(false)
+        expect(hasTransform(undefined)).toBe(false)
+    })
+})
 
 describe("computeFlipOrigin", () => {
     it("returns the item's own center as the pivot", () => {

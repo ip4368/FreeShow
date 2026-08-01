@@ -5,6 +5,8 @@ import { Main } from "../../types/IPC/Main"
 import { checkStartupActions } from "../components/actions/actions"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
+import { isSocketTransport } from "../IPC/transport"
+import { initCrdtClient } from "./crdt/crdtClient"
 import { cameraManager } from "../media/cameraManager"
 import { activePopup, activeProfile, alertMessage, cachePath, capabilities, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, profiles, providerConnections, shows, special, version, windowState } from "../stores"
 import { startTracking } from "./analytics"
@@ -35,6 +37,7 @@ export async function startup() {
             initialized = true // only call this once per window
             destroy(STARTUP, "startup")
 
+            // backend advertises which platform features are available (headless/web hides desktop-only ones)
             if (msg.capabilities) capabilities.set(msg.capabilities)
 
             const type = msg.data
@@ -59,6 +62,8 @@ export async function startup() {
 async function startupMain() {
     setLanguage("", true)
     setupMainReceivers()
+    // real-time co-editing bridge (web/remote clients only)
+    if (isSocketTransport()) initCrdtClient()
     getMainData()
 
     await wait(50)

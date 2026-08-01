@@ -36,7 +36,10 @@ export const os: Writable<OS> = writable({ platform: "win32", name: "", arch: ""
 export const deviceId: Writable<string> = writable("")
 export const version: Writable<string> = writable("0.0.0")
 export const currentWindow: Writable<null | "output" | "pdf"> = writable(null)
+// which platform features are available (advertised by the backend at STARTUP); defaults to full desktop
 export const capabilities: Writable<CapabilitySet> = writable(ELECTRON_CAPABILITIES)
+// socket transport connection state (null when using local Electron IPC)
+export const connectionStatus: Writable<null | "connected" | "disconnected" | "reconnecting"> = writable(null)
 export const localeDirection: Writable<"rtl" | "ltr"> = writable("ltr")
 export const dictionary: Writable<Dictionary> = writable({})
 export const saved: Writable<boolean> = writable(true)

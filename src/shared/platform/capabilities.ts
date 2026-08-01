@@ -9,6 +9,8 @@ export interface CapabilitySet {
     outputWindows: boolean
     /** NDI video I/O. */
     ndi: boolean
+    /** Open Media Transport video I/O. */
+    omt: boolean
     /** Blackmagic (DeckLink) video I/O. */
     blackmagic: boolean
     /** Screen / window / camera capture (desktopCapturer, screen). */
@@ -33,6 +35,7 @@ export interface CapabilitySet {
 export const ELECTRON_CAPABILITIES: CapabilitySet = {
     outputWindows: true,
     ndi: true,
+    omt: true,
     blackmagic: true,
     screenCapture: true,
     midi: true,
@@ -47,6 +50,7 @@ export const ELECTRON_CAPABILITIES: CapabilitySet = {
 export const HEADLESS_CAPABILITIES: CapabilitySet = {
     outputWindows: false,
     ndi: false,
+    omt: false,
     blackmagic: false,
     screenCapture: false,
     midi: false,

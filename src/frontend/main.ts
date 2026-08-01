@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/electron/renderer"
 import "svelte"
 import App from "./App.svelte"
 import { installTransport } from "./IPC/transport"
+import { installBrowserGuards } from "./utils/browserGuards"
 import { ERROR_FILTER } from "./utils/common"
 
 // error reporting (production only)
@@ -21,9 +22,11 @@ if (import.meta.env.PROD) {
     })
 }
 
-// Install the renderer/backend adapter before App.svelte starts its IPC-driven
-// startup sequence. Alternative runtimes can provide another implementation.
+// choose the renderer <-> backend transport (Electron IPC or Socket.IO) before startup() runs
 installTransport()
+
+// browser-only guards (native context menu, save/open/print shortcuts, unsaved-changes close warning)
+if ((import.meta as any).env?.VITE_TARGET === "web") installBrowserGuards()
 
 const app = new App({ target: document.body })
 

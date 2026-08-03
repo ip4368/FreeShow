@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     branches:
-      - "main"
+      - "collab-main"
   workflow_dispatch:
 
 jobs:

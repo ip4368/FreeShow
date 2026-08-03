@@ -8,6 +8,7 @@
 //   3. Otherwise (desktop default)                   -> Electron IPC (preload's window.api)
 
 import { connectionStatus } from "../../stores"
+import { showWebLogin } from "../../utils/webLogin"
 import { getElectronApi } from "./electronTransport"
 import { createHybridApi } from "./hybridTransport"
 import { createSocketApi } from "./socketTransport"
@@ -42,10 +43,94 @@ export function setRemoteServerConfig(config: RemoteServerConfig | null) {
     else localStorage.setItem(REMOTE_SERVER_KEY, JSON.stringify(config))
 }
 
+function isWebBuild(): boolean {
+    return (import.meta as any).env?.VITE_TARGET === "web"
+}
+
 /** Returns true if this frontend is running against a Socket.IO backend (web build or remote desktop). */
 export function isSocketTransport(): boolean {
-    const isWeb = (import.meta as any).env?.VITE_TARGET === "web"
-    return isWeb || !!getRemoteServerConfig()
+    return isWebBuild() || !!getRemoteServerConfig()
+}
+
+// The web build has no connection dialog to type a token into: the server prints a
+// `?token=...` URL when it generates one, so we take the token from the query string
+// on first load and remember it.
+//
+// Stored in localStorage rather than sessionStorage so a second tab works without
+// re-pasting the URL. That is not a meaningful downgrade - the token already travels
+// in /media and /thumbnail query strings - but it does mean the value outlives the tab.
+const WEB_TOKEN_KEY = "freeshow_web_token"
+let cachedWebToken: string | null = null
+
+/**
+ * Token for the web build: reads `?token=` once, persists it, then strips it from the
+ * address bar so it doesn't leak through bookmarks, history or Referer headers.
+ */
+export function getWebToken(): string {
+    if (cachedWebToken !== null) return cachedWebToken
+    cachedWebToken = ""
+
+    try {
+        if (typeof window === "undefined") return cachedWebToken
+
+        const params = new URLSearchParams(window.location.search)
+        const fromUrl = params.get("token")
+
+        if (fromUrl) {
+            cachedWebToken = fromUrl
+            localStorage.setItem(WEB_TOKEN_KEY, fromUrl)
+
+            params.delete("token")
+            const query = params.toString()
+            window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : "") + window.location.hash)
+        } else {
+            cachedWebToken = localStorage.getItem(WEB_TOKEN_KEY) || ""
+        }
+    } catch {
+        // storage disabled (private mode) or a malformed URL - carry on without a token
+    }
+
+    return cachedWebToken
+}
+
+/** Auth token for whichever socket backend is active, or "" when none applies. */
+export function getConnectionToken(): string {
+    const remote = getRemoteServerConfig()
+    if (remote) return remote.token || ""
+    return isWebBuild() ? getWebToken() : ""
+}
+
+/** Persist a token obtained from the login prompt. */
+export function setWebToken(token: string) {
+    cachedWebToken = token
+    try {
+        localStorage.setItem(WEB_TOKEN_KEY, token)
+    } catch {
+        // storage disabled - the token still applies to this page load
+    }
+}
+
+/**
+ * The server rejected our token (wrong, or rotated by a server restart). Drop it so the
+ * prompt starts empty, then ask for a new one and reload once we have a verified token.
+ * A full reload is the simplest way back to a clean startup, and matches what
+ * ServerConnection.svelte already does on the desktop.
+ */
+function handleUnauthorized() {
+    try {
+        localStorage.removeItem(WEB_TOKEN_KEY)
+    } catch {
+        // ignore
+    }
+    cachedWebToken = ""
+
+    showWebLogin(
+        (token) => {
+            setWebToken(token)
+            window.location.reload()
+        },
+        hadToken ? "The saved access token was rejected." : ""
+    )
 }
 
 // safely set window.api. In Electron the preload now exposes the IPC bridge as
@@ -60,12 +145,16 @@ function setWindowApi(api: FreeShowApi) {
     }
 }
 
-export function installTransport() {
-    const isWeb = (import.meta as any).env?.VITE_TARGET === "web"
+// whether this page load started with a token, so the prompt can distinguish
+// "you need a token" from "the one you had stopped working"
+let hadToken = false
 
+export function installTransport() {
     // 1. Web build: connect to the origin that served the bundle.
-    if (isWeb) {
-        setWindowApi(createSocketApi({ onStatus }))
+    if (isWebBuild()) {
+        const token = getWebToken()
+        hadToken = !!token
+        setWindowApi(createSocketApi({ auth: token ? { token } : undefined, onStatus, onUnauthorized: handleUnauthorized }))
         return
     }
 

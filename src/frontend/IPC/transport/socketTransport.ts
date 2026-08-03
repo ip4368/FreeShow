@@ -27,10 +27,16 @@ export interface SocketTransportOptions {
     auth?: Record<string, unknown>
     /** Called whenever the underlying socket connects / disconnects, for connection-status UI. */
     onStatus?: (status: "connected" | "disconnected" | "reconnecting") => void
+    /**
+     * The server rejected the handshake token. Socket.IO does NOT retry after a
+     * middleware rejection, so without handling this the app waits for a STARTUP that
+     * will never arrive. Fires at most once per transport.
+     */
+    onUnauthorized?: () => void
 }
 
 export function createSocketApi(options: SocketTransportOptions = {}): FreeShowApi {
-    const { url, auth, onStatus } = options
+    const { url, auth, onStatus, onUnauthorized } = options
 
     const connectOptions: Partial<ManagerOptions & SocketOptions> = { transports: ["websocket", "polling"] }
     if (auth) connectOptions.auth = auth
@@ -61,6 +67,16 @@ export function createSocketApi(options: SocketTransportOptions = {}): FreeShowA
         socket.on("disconnect", () => onStatus("disconnected"))
         socket.io.on("reconnect_attempt", () => onStatus("reconnecting"))
     }
+
+    // A middleware rejection (auth.ts socketAuth) arrives as connect_error with the
+    // message the server passed to next(). Everything else here is a transient network
+    // failure that Socket.IO retries on its own.
+    let reportedUnauthorized = false
+    socket.on("connect_error", (err: Error) => {
+        if (err?.message !== "unauthorized" || reportedUnauthorized) return
+        reportedUnauthorized = true
+        onUnauthorized?.()
+    })
 
     return {
         send(channel: string, data?: any, id?: string) {

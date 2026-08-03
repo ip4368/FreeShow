@@ -43,7 +43,10 @@ test.beforeAll(async () => {
     dataDir = tmp.dirSync({ unsafeCleanup: true })
     server = spawn("node", [SERVER_ENTRY], {
         cwd: ROOT,
-        env: { ...process.env, FREESHOW_PORT: String(PORT), FREESHOW_DATA: dataDir.name },
+        // FREESHOW_ALLOW_OPEN: the server now generates an auth token when none is set,
+        // and this test is about capability gating, not auth. See headlessAuth.test.ts
+        // for the token flow.
+        env: { ...process.env, FREESHOW_PORT: String(PORT), FREESHOW_DATA: dataDir.name, FREESHOW_ALLOW_OPEN: "1" },
         stdio: "ignore"
     })
     await waitForServer()

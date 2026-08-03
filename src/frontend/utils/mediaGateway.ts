@@ -7,11 +7,20 @@
 //
 // Local Electron clients don't use this (they read files directly).
 
-import { getRemoteServerConfig, isSocketTransport } from "../IPC/transport"
+import { getConnectionToken, getRemoteServerConfig, isSocketTransport } from "../IPC/transport"
 
 /** True when media should be fetched from the server (web build or hybrid desktop). */
 export function isRemoteMedia(): boolean {
     return isSocketTransport()
+}
+
+/**
+ * Base URL + auth token for the gateway. The web build is same-origin (empty base) and
+ * takes its token from the `?token=` it was opened with; a remote desktop uses the URL
+ * and token saved in its connection settings.
+ */
+function gatewayTarget(): { base: string; token: string } {
+    return { base: getRemoteServerConfig()?.url || "", token: getConnectionToken() }
 }
 
 /** True if this is already a gateway URL (absolute or origin-relative). */
@@ -28,11 +37,10 @@ export function getServerMediaUrl(filePath: string): string {
     let filePathOnly = filePath
     if (filePathOnly.startsWith("file://")) filePathOnly = filePathOnly.slice("file://".length)
 
-    const config = getRemoteServerConfig() // null for the web build (same origin as the page)
-    const base = config?.url || ""
+    const { base, token } = gatewayTarget()
 
     const params = new URLSearchParams({ path: filePathOnly })
-    if (config?.token) params.set("token", config.token)
+    if (token) params.set("token", token)
 
     return `${base}/media?${params.toString()}`
 }
@@ -44,22 +52,20 @@ export function getServerThumbnailUrl(filePath: string, size: number): string {
     let filePathOnly = filePath
     if (filePathOnly.startsWith("file://")) filePathOnly = filePathOnly.slice("file://".length)
 
-    const config = getRemoteServerConfig()
-    const base = config?.url || ""
+    const { base, token } = gatewayTarget()
 
     const params = new URLSearchParams({ path: filePathOnly, size: String(Math.round(size) || 250) })
-    if (config?.token) params.set("token", config.token)
+    if (token) params.set("token", token)
 
     return `${base}/thumbnail?${params.toString()}`
 }
 
 /** Upload a file into a (sandbox-relative) folder on the server. Returns true on success. */
 export async function uploadToServer(folderPath: string, file: File): Promise<boolean> {
-    const config = getRemoteServerConfig()
-    const base = config?.url || ""
+    const { base, token } = gatewayTarget()
 
     const params = new URLSearchParams({ path: folderPath, name: file.name })
-    if (config?.token) params.set("token", config.token)
+    if (token) params.set("token", token)
 
     try {
         const res = await fetch(`${base}/media/upload?${params.toString()}`, {

@@ -102,6 +102,79 @@ jobs:
           USE_SYSTEM_FPM: true
         run: npm run release:arm64
 
+  # Headless web server. Independent of the desktop jobs: no Electron, no native
+  # desktop modules, so it needs none of the libfontconfig/uuid/libltc packages.
+  #
+  # Every target is built on its own native runner so the smoke test actually
+  # exercises the bundled runtime and the native sharp build it ships.
+  publish_server:
+    name: "Publish Server (${{ matrix.platform }}-${{ matrix.arch }})"
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - runner: macos-26-intel # Intel
+            platform: macos
+            arch: x64
+          - runner: macos-latest # Apple silicon
+            platform: macos
+            arch: arm64
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js and NPM
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package server
+        run: npm run package:server:${{ matrix.platform }}-${{ matrix.arch }}
+
+      # runs against the extracted tarball, so it covers the bundled Node runtime,
+      # the relocated sharp install and the packaged asset paths
+      - name: Smoke test the artifact
+        run: npm run test:server-package
+
+      # always available even if the release upload races with the desktop jobs' draft
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: freeshow-server-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            dist/server/*.tar.gz
+            dist/server/*.deb
+          if-no-files-found: error
+
+      - name: Read version
+        id: version
+        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # attach to the same draft release the desktop builds publish to (electron-builder
+      # names it v<version>); softprops updates an existing draft rather than duplicating
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.value }}
+          draft: true
+          files: |
+            dist/server/*.tar.gz
+            dist/server/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   publish_mac:
     name: "Publish MacOS"
     runs-on: macos-latest

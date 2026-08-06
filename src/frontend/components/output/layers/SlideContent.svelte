@@ -47,7 +47,6 @@
 
     let currentItems: Item[] = []
     let current: any = {}
-    let show = false
 
     // Track items that are unchanged between slides and have no transition (to avoid redraw flicker)
     let persistentItems: Item[] = []
@@ -284,40 +283,27 @@
             return
         }
 
+        // OVERLAP CROSSFADE (issue #2169): update content synchronously and let SlideItemTransition
+        // keep the outgoing content mounted + fading while the incoming content fades in on the same
+        // (requestAnimationFrame) clock. There is no {#key} teardown, so there is never an unmounted
+        // gap and no setTimeout-vs-rAF desync that made slides flash to black under main-thread load.
+        currentItems = clone(currentSlide.items || [])
+        current = {
+            outSlide: clone(outSlide),
+            slideData: clone(slideData),
+            currentSlide: clone(currentSlide),
+            lines: clone(lines),
+            currentStyle: clone(currentStyle)
+        }
+
         const gen = ++updateGeneration
-
-        // wait for between to update out transition
-        timeout = setTimeout(() => {
-            if (gen !== updateGeneration) return
-            show = false
-
-            // wait for previous items to start fading out (svelte will keep them until the transition is done!)
-            timeout = setTimeout(() => {
+        timeout = setTimeout(
+            () => {
                 if (gen !== updateGeneration) return
-                // Only include items that need transitioning in currentItems
-                // Persistent items are rendered separately
-                currentItems = clone(currentSlide.items || [])
-                current = {
-                    outSlide: clone(outSlide),
-                    slideData: clone(slideData),
-                    currentSlide: clone(currentSlide),
-                    lines: clone(lines),
-                    currentStyle: clone(currentStyle)
-                }
-
-                // wait until half transition duration of previous items have passed as it looks better visually
-                timeout = setTimeout(() => {
-                    if (gen !== updateGeneration) return
-                    show = true
-
-                    // wait for between to set in transition
-                    timeout = setTimeout(() => {
-                        if (gen !== updateGeneration) return
-                        transitioningBetween = false
-                    })
-                }, waitToShow)
-            })
-        })
+                transitioningBetween = false
+            },
+            currentTransitionDuration + waitToShow + 50
+        )
     }
 
     // OUTPUT SLIDE TIMELINE
@@ -435,33 +421,29 @@
                 updateDynamicValues={!isClearing}
             />
         {:else}
-            <!-- Transitioning item: render with animation wrapper inside {#key} -->
-            {#key show}
-                {#if show}
-                    <SlideItemTransition {preview} {transitionEnabled} {transitioningBetween} globalTransition={transition} currentSlide={current.currentSlide} {item} outSlide={current.outSlide} lines={current.lines} currentStyle={current.currentStyle} let:customSlide let:customItem let:customLines let:customOut let:transition>
-                        <Textbox
-                            backdropFilter={current.slideData?.["backdrop-filter"] || ""}
-                            chords={customItem.chords?.enabled}
-                            animationStyle={animationData.style || {}}
-                            item={timelineItems.get(`${customOut?.id}-${customOut?.layout}-${customOut?.index}`)?.[index] || customItem}
-                            {transition}
-                            {ratio}
-                            {outputId}
-                            ref={{ type: "show", showId: customOut?.id, slideId: customSlide?.id, id: customSlide?.id || "", layoutId: customOut?.layout, origin }}
-                            linesStart={customLines?.[currentLineId || ""]?.[item.lineReveal ? "linesStart" : "start"]}
-                            linesEnd={customLines?.[currentLineId || ""]?.[item.lineReveal ? "linesEnd" : "end"]}
-                            clickRevealed={!!customLines?.[currentLineId || ""]?.clickRevealed}
-                            outputStyle={current.currentStyle}
-                            {mirror}
-                            {preview}
-                            slideIndex={customOut?.index}
-                            {styleIdOverride}
-                            autoSizeKey={createAutoSizeKey(item, index)}
-                            updateDynamicValues={!isClearing}
-                        />
-                    </SlideItemTransition>
-                {/if}
-            {/key}
+            <!-- Transitioning item: SlideItemTransition keeps the outgoing copy mounted + fading while the incoming fades in (overlap crossfade, #2169) -->
+            <SlideItemTransition {preview} {transitionEnabled} {transitioningBetween} globalTransition={transition} currentSlide={current.currentSlide} {item} outSlide={current.outSlide} lines={current.lines} currentStyle={current.currentStyle} let:customSlide let:customItem let:customLines let:customOut let:transition>
+                <Textbox
+                    backdropFilter={current.slideData?.["backdrop-filter"] || ""}
+                    chords={customItem.chords?.enabled}
+                    animationStyle={animationData.style || {}}
+                    item={timelineItems.get(`${customOut?.id}-${customOut?.layout}-${customOut?.index}`)?.[index] || customItem}
+                    {transition}
+                    {ratio}
+                    {outputId}
+                    ref={{ type: "show", showId: customOut?.id, slideId: customSlide?.id, id: customSlide?.id || "", layoutId: customOut?.layout, origin }}
+                    linesStart={customLines?.[currentLineId || ""]?.[item.lineReveal ? "linesStart" : "start"]}
+                    linesEnd={customLines?.[currentLineId || ""]?.[item.lineReveal ? "linesEnd" : "end"]}
+                    clickRevealed={!!customLines?.[currentLineId || ""]?.clickRevealed}
+                    outputStyle={current.currentStyle}
+                    {mirror}
+                    {preview}
+                    slideIndex={customOut?.index}
+                    {styleIdOverride}
+                    autoSizeKey={createAutoSizeKey(item, index)}
+                    updateDynamicValues={!isClearing}
+                />
+            </SlideItemTransition>
         {/if}
     {/if}
 {/each}

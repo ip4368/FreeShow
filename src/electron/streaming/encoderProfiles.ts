@@ -137,6 +137,12 @@ export function buildEncoderCommand(opts: EncoderCommandOptions): string[] {
 
     if (profile.preInput) args.push(...profile.preInput)
 
+    // Frames are written on a timer and skipped whenever the previous write is still in flight,
+    // so the declared -framerate would put the video timeline at frames/fps and let it run behind
+    // real time. Stamping from the clock instead keeps it correct however many frames are lost.
+    // Deliberately not applied to the audio input: there it stamps packets with the monotonic
+    // clock while video restarts near zero, and the muxer discards nearly everything.
+    args.push("-use_wallclock_as_timestamps", "1")
     args.push("-f", "rawvideo", "-pixel_format", "bgra", "-video_size", `${opts.inputWidth}x${opts.inputHeight}`, "-framerate", `${opts.fps}`, "-thread_queue_size", "4096", "-i", "pipe:0")
 
     if (opts.enableAudio) {
@@ -155,8 +161,15 @@ export function buildEncoderCommand(opts: EncoderCommandOptions): string[] {
 
 /** Relay process: remux the encoded mpegts straight to one RTMP destination, no re-encode. */
 export function buildRelayCommand(url: string): string[] {
-    // aac_adtstoasc is required going from mpegts (ADTS) to flv (ASC)
-    return ["-hide_banner", "-loglevel", "warning", "-f", "mpegts", "-i", "pipe:0", "-c", "copy", "-bsf:a", "aac_adtstoasc", "-f", "flv", url]
+    // aac_adtstoasc is required going from mpegts (ADTS) to flv (ASC).
+    //
+    // aac_seq_header_detect is what makes the *first* of those ASCs correct. Without it the flv
+    // muxer writes its audio sequence header before the bitstream filter has seen a packet, so it
+    // emits an all-zero AudioSpecificConfig and only corrects it on the next one. FLV's own rate
+    // field is two bits and cannot express 48kHz — it always reads "44kHz" for AAC — so the real
+    // rate exists nowhere but that config, and an ingest which trusts the first one falls back to
+    // 44100 and plays the entire broadcast flat and slow. Local players recover on the second.
+    return ["-hide_banner", "-loglevel", "warning", "-f", "mpegts", "-i", "pipe:0", "-c", "copy", "-bsf:a", "aac_adtstoasc", "-flvflags", "+aac_seq_header_detect", "-f", "flv", url]
 }
 
 /** Short throwaway encode used to prove the encoder actually works on this machine. */

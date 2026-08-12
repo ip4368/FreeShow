@@ -122,6 +122,22 @@ describe("buildEncoderCommand", () => {
         expect(muted.some((a) => a.startsWith("anullsrc"))).toBe(true)
     })
 
+    it("anchors video timestamps to the wall clock but never the audio ones", () => {
+        const args = buildEncoderCommand({ ...baseOptions, enableAudio: true })
+
+        // frames are written on a timer and skipped whenever the previous write is still in
+        // flight, so without this the video timeline is frames/fps and runs slower than real
+        // time, drifting away from the sample-derived audio timeline
+        const flag = args.indexOf("-use_wallclock_as_timestamps")
+        expect(flag).toBeGreaterThanOrEqual(0)
+        expect(args.indexOf("rawvideo")).toBeGreaterThan(flag)
+        expect(args.indexOf("rawvideo")).toBeLessThan(args.indexOf("pipe:3"))
+
+        // exactly one: on the s16le input it stamps packets with the monotonic clock while
+        // video restarts near zero, which floods the muxer with non-monotonic DTS
+        expect(args.filter((a) => a === "-use_wallclock_as_timestamps")).toHaveLength(1)
+    })
+
     describe("vaapi", () => {
         const args = buildEncoderCommand({ ...baseOptions, encoderId: "vaapi" })
 
@@ -159,6 +175,13 @@ describe("buildRelayCommand", () => {
 
     it("converts AAC from ADTS to ASC for flv", () => {
         expect(arg(buildRelayCommand("rtmp://x/y"), "-bsf:a")).toBe("aac_adtstoasc")
+    })
+
+    it("writes a populated AAC sequence header rather than a placeholder", () => {
+        // without this the muxer writes its header before the bitstream filter has produced any
+        // extradata, so the first AudioSpecificConfig is all zeros and a receiver falls back to
+        // the flv rate field, which cannot say 48kHz and reports 44.1kHz instead
+        expect(arg(buildRelayCommand("rtmp://x/y"), "-flvflags")).toBe("+aac_seq_header_detect")
     })
 
     it("targets the destination as an flv output", () => {

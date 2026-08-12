@@ -19,8 +19,20 @@ export function setRtmpNoticeListener(listener: RtmpNoticeListener) {
     noticeListener = listener
 }
 
-const SILENCE_THRESHOLD_MS = 100
 const SILENCE_INTERVAL_MS = 50
+const AUDIO_BYTES_PER_FRAME = AUDIO_CHANNELS * 2
+/**
+ * How far the audio timeline may fall behind the wall clock before silence is added.
+ *
+ * The renderer delivers in ~42ms MediaRecorder slices and IPC plus Opus decode add jitter on top,
+ * so this has to sit well clear of that: topping up a merely late slice splices a silent hole into
+ * audio that never actually stopped, which is audible as a click on every occurrence.
+ */
+const AUDIO_FILL_THRESHOLD_MS = 250
+/** a deficit past this means the clock jumped (system suspend), so it is re-based rather than filled */
+const AUDIO_FILL_MAX_MS = 1000
+/** how long the encoder may run on filler silence alone before that is reported as a fault */
+const AUDIO_MISSING_WARN_MS = 5000
 /** a relay buffering more than this cannot keep up, so it gets restarted instead of stalling the encoder */
 const RELAY_BUFFER_CAP_BYTES = 2 * 1024 * 1024
 const RELAY_LIVE_AFTER_MS = 2000
@@ -73,7 +85,13 @@ interface StreamInstance {
     relays: Map<string, RelayInstance>
     videoInterval?: NodeJS.Timeout
     audioInterval?: NodeJS.Timeout
-    lastAudioTime: number
+    /** epoch the audio timeline is measured from; reset with every encoder, which restarts at zero */
+    audioClockStart: number
+    /** every frame handed to pipe:3, real or silence — ffmpeg derives the audio PTS from this count alone */
+    audioFramesWritten: number
+    /** of those, the ones that came from the renderer; zero means the broadcast is filler silence */
+    audioRealFrames: number
+    audioWarnedSilent: boolean
     lastFrame: Buffer | null
 }
 
@@ -158,7 +176,10 @@ export class RtmpStreamer {
                 encoderFailures: 0,
                 triedSoftwareFallback: false,
                 relays: new Map(),
-                lastAudioTime: Date.now(),
+                audioClockStart: 0,
+                audioFramesWritten: 0,
+                audioRealFrames: 0,
+                audioWarnedSilent: false,
                 lastFrame: null
             }
             this.streamers.set(outputId, streamer)
@@ -275,13 +296,43 @@ export class RtmpStreamer {
         }, frameDelay)
 
         if (config.enableAudio) {
-            const silenceChunk = Buffer.alloc(SAMPLE_RATE * 2 * AUDIO_CHANNELS * (SILENCE_INTERVAL_MS / 1000))
+            streamer.audioClockStart = Date.now()
+            streamer.audioFramesWritten = 0
+            streamer.audioRealFrames = 0
+            streamer.audioWarnedSilent = false
+
             streamer.audioInterval = setInterval(() => {
-                if (Date.now() - streamer.lastAudioTime <= SILENCE_THRESHOLD_MS) return
                 const aStream = streamer.encoder?.stdio[3] as any
                 if (!aStream || aStream.destroyed) return
+
+                // A broken audio path is otherwise invisible: the filler keeps the timeline moving,
+                // so the broadcast looks healthy and is simply silent. An idle mixer still delivers
+                // real (quiet) frames, so nothing arriving at all means the path itself is broken.
+                if (!streamer.audioRealFrames && !streamer.audioWarnedSilent && Date.now() - streamer.audioClockStart > AUDIO_MISSING_WARN_MS) {
+                    streamer.audioWarnedSilent = true
+                    console.warn(`[RtmpStreamer] No audio has reached the encoder for ${streamer.outputId} after ${AUDIO_MISSING_WARN_MS / 1000}s — broadcasting silence. Check the output is connected in Audio Routing, and that @discordjs/opus loaded (see isAudioEnabled).`)
+                }
+
+                // Top up the actual deficit rather than a fixed chunk. Because the decision is made
+                // against the running total, silence added for a gap that turned out to be a late
+                // delivery is cancelled out by the next tick seeing a negative deficit, instead of
+                // inflating the timeline for the rest of the broadcast.
+                const elapsedFrames = Math.round(((Date.now() - streamer.audioClockStart) / 1000) * SAMPLE_RATE)
+                const deficit = elapsedFrames - streamer.audioFramesWritten
+                if (deficit <= (AUDIO_FILL_THRESHOLD_MS / 1000) * SAMPLE_RATE) return
+
+                if (deficit > (AUDIO_FILL_MAX_MS / 1000) * SAMPLE_RATE) {
+                    // Forgive the gap by moving the origin, never by crediting frames that were not
+                    // written: audioFramesWritten has to keep meaning "frames actually in the pipe",
+                    // or every later deficit is measured against a total that overstates it and the
+                    // filler goes quiet for the rest of the broadcast.
+                    streamer.audioClockStart = Date.now() - (streamer.audioFramesWritten / SAMPLE_RATE) * 1000
+                    return
+                }
+
                 try {
-                    aStream.write(silenceChunk)
+                    aStream.write(Buffer.alloc(deficit * AUDIO_BYTES_PER_FRAME))
+                    streamer.audioFramesWritten += deficit
                 } catch {}
             }, SILENCE_INTERVAL_MS)
         }
@@ -585,14 +636,14 @@ export class RtmpStreamer {
     }
 
     static updateAudio(buffer: Buffer) {
-        const now = Date.now()
         for (const streamer of this.streamers.values()) {
             if (!streamer.config.enableAudio) continue
-            streamer.lastAudioTime = now
             const audioStream = streamer.encoder?.stdio[3] as any
             if (!audioStream || audioStream.destroyed) continue
             try {
                 audioStream.write(buffer)
+                streamer.audioFramesWritten += buffer.length / AUDIO_BYTES_PER_FRAME
+                streamer.audioRealFrames += buffer.length / AUDIO_BYTES_PER_FRAME
             } catch (err) {
                 console.error("[RtmpStreamer] Error writing audio:", err)
             }

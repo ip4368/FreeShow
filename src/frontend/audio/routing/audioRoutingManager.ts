@@ -225,6 +225,11 @@ export class AudioRoutingManager {
 
         if (existingChain) {
             if (existingChain.configHash === configHash) {
+                // The caller disconnects the merger from everything immediately before
+                // this, which severs the edge into the chain as well. Reusing the cached
+                // chain therefore has to put that edge back, or the channel goes mute
+                // from the second routing update onwards.
+                node.connect(existingChain.input)
                 return existingChain.output
             }
             existingChain.dispose()
@@ -251,7 +256,8 @@ export class AudioRoutingManager {
         }
 
         this.mergerEffectChains.set(id, {
-            input: node,
+            // head of the chain, i.e. what the merger feeds — not the merger itself
+            input: chain[0].input,
             output: prev,
             configHash,
             dispose: () => {
@@ -359,7 +365,13 @@ export class AudioRoutingManager {
 
         this.mergerNodes.forEach((node, id) => {
             this.safelyDisconnect(node)
+
             let outNode = this.buildMergerEffectChain(id, node, allEffects[id])
+            // Once a chain is in front of it, the chain output — not the merger — is
+            // what carries this channel's routing edges, so that is what has to be
+            // cleared before they are rebuilt. Otherwise a connection the user removed
+            // keeps playing for as long as the effect config stays the same.
+            if (outNode !== node) this.safelyDisconnect(outNode)
 
             const chData = allChannelData[id] || {}
             const delaySec = Math.max(0, Math.min(5, (chData.delay || 0) / 1000))

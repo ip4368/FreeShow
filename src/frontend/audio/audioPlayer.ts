@@ -13,6 +13,7 @@ import { AudioAnalyserMerger } from "./audioAnalyserMerger"
 import { clearAudio, clearing, fadeInAudio, fadeOutAudio } from "./audioFading"
 import { AudioMultichannel } from "./audioMultichannel"
 import { AudioPlaylist } from "./audioPlaylist"
+import { MIC_PLAYBACK_CONSUMER, micDeviceId, releaseMicrophoneStream } from "./microphoneStream"
 import { AudioRoutingManager } from "./routing/audioRoutingManager"
 
 type AudioMetadata = {
@@ -331,7 +332,10 @@ export class AudioPlayer {
                     item.audio.load()
                 } catch {}
             }
-            this.stopStream(item?.stream)
+            // a microphone capture is shared with any meter watching it, so hand
+            // it back rather than stopping the tracks out from under them
+            if (item?.isMic) releaseMicrophoneStream(micDeviceId(id), MIC_PLAYBACK_CONSUMER)
+            else this.stopStream(item?.stream)
 
             delete a[id]
             return a

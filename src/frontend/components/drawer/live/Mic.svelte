@@ -1,101 +1,50 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte"
-    import { Main } from "../../../../types/IPC/Main"
+    import { uid } from "uid"
     import { AudioMicrophone } from "../../../audio/audioMicrophone"
-    import { sendMain } from "../../../IPC/main"
     import { activeFocus, activeShow, focusMode, playingAudio } from "../../../stores"
     import Icon from "../../helpers/Icon.svelte"
     import Button from "../../inputs/Button.svelte"
 
     export let mic: { id: string; name: string }
 
-    // https://dobrian.github.io/cmp/topics/sample-recording-and-playback-with-web-audio-api/1.loading-and-playing-sound-files.html
-
-    // https://developers.google.com/web/fundamentals/media/recording-audio
-    // TODO: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet
-    //   class MyAudioProcessor extends AudioWorklet {
-    //   constructor() {
-    //     super();
-    //   }
-
-    //   process(inputList, outputList, parameters) {
-    //     /* using the inputs (or not, as needed), write the output
-    //        into each of the outputs */
-
-    //     return true;
-    //   }
-    // };
-
-    // registerProcessor("processor", MyAudioProcessor);
+    // The meter reads the capture AudioMicrophone already shares for this device.
+    // It must not open one of its own: a second stream reconfigures the device and
+    // interrupts anything already listening to it (see microphoneStream.ts).
+    const monitorId = uid()
 
     let soundLevel = 0
-
-    let audioStream: MediaStream | undefined
-    let context: AudioContext | undefined
-    let source: MediaStreamAudioSourceNode | undefined
-    // let gainNode
-    let audio: HTMLAudioElement | undefined
-
-    const handleSuccess = function (stream: MediaStream) {
-        audioStream = stream
-        context = new AudioContext()
-        source = context.createMediaStreamSource(stream)
-
-        var analyser = context.createAnalyser()
-        analyser.smoothingTimeConstant = 0.2
-        analyser.fftSize = 1024
-
-        var node = context.createScriptProcessor(2048, 1, 1)
-
-        var values = 0
-        var average
-        node.onaudioprocess = function () {
-            // bitcount is fftsize / 2
-            var array = new Uint8Array(analyser.frequencyBinCount)
-            analyser.getByteFrequencyData(array)
-
-            var length = array.length
-            for (var i = 0; i < length; i++) {
-                values += array[i]
-            }
-
-            average = values / length
-            soundLevel = Math.min(100, average)
-
-            average = values = 0
-        }
-
-        source.connect(analyser)
-        analyser.connect(node)
-        node.connect(context.destination)
-
-        audio = new Audio()
-        audio.srcObject = stream
-        audio.play()
-        audio.volume = 0
-    }
-
+    let listening = false
+    let animationFrame = 0
+    let lastTickTime = 0
     let retryTimeout: NodeJS.Timeout | null = null
 
-    onMount(capture)
-    function capture() {
-        navigator.mediaDevices
-            .getUserMedia({ audio: { deviceId: { exact: mic.id } } })
-            .then(handleSuccess)
-            .catch((err) => {
-                console.error(err)
-                if (err.name === "NotReadableError") {
-                    sendMain(Main.ACCESS_MICROPHONE_PERMISSION)
-                }
-
-                // retry
-                retryTimeout = setTimeout(capture, 5000)
+    onMount(() => {
+        listen()
+        function listen() {
+            retryTimeout = null
+            AudioMicrophone.startListening(mic.id, monitorId).then((started) => {
+                listening = started
+                // the device can be busy elsewhere for a while, keep trying
+                if (!started) retryTimeout = setTimeout(listen, 5000)
             })
-    }
+        }
+
+        function loop(timestamp: number) {
+            animationFrame = requestAnimationFrame(loop)
+            if (timestamp - lastTickTime < 33) return // throttle to ~30fps, matching AudioMeter
+            lastTickTime = timestamp
+
+            const dB = AudioMicrophone.getVolume(mic.id)
+            soundLevel = dB <= -60 ? 0 : Math.min(100, ((dB + 60) / 60) * 100)
+        }
+        animationFrame = requestAnimationFrame(loop)
+    })
 
     onDestroy(() => {
-        audioStream?.getAudioTracks().forEach((track) => track.stop())
+        if (animationFrame) cancelAnimationFrame(animationFrame)
         if (retryTimeout) clearTimeout(retryTimeout)
+        AudioMicrophone.stopListening(mic.id, monitorId)
     })
 
     $: micId = "mic_sub_" + mic.id
@@ -106,11 +55,7 @@
     <Button
         style="width: 100%;"
         bold={false}
-        disabled={!context}
-        on:click={() => {
-            if (!context) return
-            AudioMicrophone.start(mic.id, { name: mic.name }, { pauseIfPlaying: true })
-        }}
+        on:click={() => AudioMicrophone.start(mic.id, { name: mic.name }, { pauseIfPlaying: true })}
         on:dblclick={(e) => {
             if (e.ctrlKey || e.metaKey) return
 
@@ -123,7 +68,7 @@
             <p>{mic.name}</p>
         </span>
 
-        {#if context}
+        {#if listening}
             <div class="channel-row">
                 <span class="signal-dot" class:active={soundLevel > 0}></span>
                 <span class="meter">

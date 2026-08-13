@@ -122,6 +122,7 @@ export type SelectIds =
     | "style"
     | "output"
     | "profile"
+    | "audio_channel"
     | "tag"
     | "bible_book"
 
@@ -466,6 +467,7 @@ export type Popups =
     | "pco_picker"
     | "sync_folders"
     | "remote_folder"
+    | "node_options"
 
 export type DefaultProjectNames = "date" | "today" | "sunday" | "week" | "custom" | "blank"
 

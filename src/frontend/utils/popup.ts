@@ -86,6 +86,7 @@ import Transition from "../components/main/popups/Transition.svelte"
 import Unsaved from "../components/main/popups/Unsaved.svelte"
 import UpdateManager from "../components/main/popups/UpdateManager.svelte"
 import Variable from "../components/main/popups/Variable.svelte"
+import NodeOptions from "../components/main/popups/NodeOptions.svelte"
 import { activePopup, popupData } from "../stores"
 
 export const popups: { [key in Popups]: ComponentType } = {
@@ -173,7 +174,8 @@ export const popups: { [key in Popups]: ComponentType } = {
     cleaning_utility: CleaningUtility,
     pco_picker: PcoServicePicker,
     sync_folders: SyncFolders,
-    remote_folder: RemoteFolderPicker
+    remote_folder: RemoteFolderPicker,
+    node_options: NodeOptions
 }
 
 export function waitForPopupData(popupId: Popups): Promise<any> {

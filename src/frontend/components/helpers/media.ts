@@ -261,7 +261,7 @@ export async function getMediaCached(path: string, size: number = mediaSize.draw
 
 export async function locateMediaFile(path: string) {
     // remote clients: media lives on the server, so this machine can't locate it on disk
-    if (isRemoteMedia()) return { path, hasChanged: false }
+    if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("blob:") || path.startsWith("freeshow-protected://") || isRemoteMedia()) return { path, hasChanged: false }
 
     let folders: string[] = []
     if (get(special).autoLocateMedia !== false) {

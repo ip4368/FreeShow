@@ -6,7 +6,7 @@
     import T from "../helpers/T.svelte"
     import Button from "../inputs/Button.svelte"
 
-    const tabs: SettingsTabs[] = ["general", "display_settings", "styles", "connection", "files", "profiles", "theme", "other"]
+    const tabs: SettingsTabs[] = ["general", "display_settings", "styles", "audio", "connection", "files", "profiles", "theme", "other"]
 
     // hide tabs whose features this client doesn't have (e.g. output/display settings on a
     // remote client, which can't own output windows or enumerate this machine's screens)

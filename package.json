@@ -1,6 +1,6 @@
 {
     "name": "freeshow",
-    "version": "1.6.5-beta.2-collab",
+    "version": "1.6.5-beta.3-collab",
     "private": true,
     "main": "build/electron/index.js",
     "description": "Show song lyrics and more for free!",
@@ -163,7 +163,6 @@
         "music-metadata": "^7.14.0",
         "node-machine-id": "^1.1.12",
         "osc-js": "^2.4.1",
-        "pcm-convert": "^1.6.5",
         "protobufjs": "^7.5.3",
         "pusher-js": "^8.5.0",
         "sharp": "^0.35.3",

@@ -1,4 +1,5 @@
 import type { ICommonTagsResult } from "music-metadata"
+import type { RtmpStatus } from "../Output"
 import type { ContentProviderId } from "../../electron/contentProviders/base/types"
 import type { TrimmedShows } from "../Show"
 
@@ -22,6 +23,7 @@ export interface ToMainSendPayloads {
     [ToMain.IMAGES_TO_SHOW]: { images: string[]; name: string }
     [ToMain.MEDIA_DOWNLOAD_PROGRESS]: { url: string; progress: number; total: number; status: "downloading" | "complete" | "error"; name?: string }
     [ToMain.PDF_IMPORT_PROGRESS]: { filePath: string; name: string; progress: number; total: number; status: "importing" | "complete" | "error"; message?: string }
+    [ToMain.RTMP_STATUS]: { outputId: string; destinations: RtmpStatus }
     // Unified provider callbacks
     [ToMain.PROVIDER_CONNECT]: { providerId: ContentProviderId; success: boolean; isFirstConnection?: boolean }
     [ToMain.PROVIDER_PROJECTS]: { providerId: ContentProviderId; categoryName: string; shows: any; projects: any; pcoPlans?: { planId: string; serviceTypeId: string; name: string; date: string }[] }

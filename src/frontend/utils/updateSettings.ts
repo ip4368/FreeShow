@@ -9,6 +9,7 @@ import { initAudioRouting } from "../audio/routing/audioRoutingInit"
 import { clone, keysToID } from "../components/helpers/array"
 import { isSocketTransport } from "../IPC/transport"
 import { checkFFmpeg, checkWindowCapture, setOutput, toggleOutputs } from "../components/helpers/output"
+import { migrateOutputsRtmp } from "../components/helpers/rtmpDestinations"
 import { defaultThemes } from "../components/settings/tabs/defaultThemes"
 import { sendMain } from "../IPC/main"
 import {
@@ -307,7 +308,10 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
     outputs: (v: any) => {
         Object.keys(v).forEach((id: string) => {
             delete v[id].out
+            if (v[id].webrtcData?.streaming) v[id].webrtcData.streaming = false
+            if (v[id].rtmpData?.streaming) v[id].rtmpData.streaming = false
         })
+        migrateOutputsRtmp(v)
         outputs.set(v)
 
         // RTMP check

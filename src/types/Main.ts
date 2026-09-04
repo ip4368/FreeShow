@@ -125,6 +125,7 @@ export type SelectIds =
     | "audio_channel"
     | "tag"
     | "bible_book"
+    | "calendar"
 
 export interface Selected {
     id: null | SelectIds
@@ -219,6 +220,14 @@ export interface MediaStyle {
 }
 
 export type AudioType = "music" | "effect"
+
+// media codec
+export interface MediaCodecInfo {
+    path: string
+    codecs: string[]
+    mimeType: string
+    mimeCodec: string
+}
 
 // subtitles/captions
 export interface Subtitle {
@@ -413,6 +422,8 @@ export type Popups =
     | "variable"
     | "interaction_input"
     | "audio_stream"
+    | "audio_effect"
+    | "add_audio_effect"
     | "now_playing"
     | "aspect_ratio"
     | "max_lines"
@@ -420,6 +431,7 @@ export type Popups =
     | "media_fit"
     | "metadata_display"
     | "import_scripture"
+    | "import_calendar"
     | "create_collection"
     | "edit_event"
     | "edit_chart"

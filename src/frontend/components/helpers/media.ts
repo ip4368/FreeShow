@@ -172,9 +172,22 @@ async function toDataURL(url: string): Promise<string> {
 // download any online media
 // get located media path & generated thumbnail
 const replacedPaths = new Map<string, { path: string; altPath?: string; thumbnail: string }>()
+const locatedMediaCache = new Map<string, { path: string; hasChanged: boolean } | null>()
+const mediaExistsCache = new Map<string, boolean>()
 let currentlyGetting: string[] = []
+
+function clearMediaCaches() {
+    locatedMediaCache.clear()
+    replacedPaths.clear()
+    mediaExistsCache.clear()
+}
+
+audioFolders.subscribe(clearMediaCaches)
+mediaFolders.subscribe(clearMediaCaches)
+
 export async function getMedia(path: string, size: number = mediaSize.drawerSize) {
-    if (typeof path !== "string") return null
+    if (typeof path !== "string" || !path) return null
+    if (locatedMediaCache.get(path) === null) return null
 
     const mediaId = `${path}-${size}`
 
@@ -182,7 +195,7 @@ export async function getMedia(path: string, size: number = mediaSize.drawerSize
     if (replacedPaths.has(mediaId)) return { ...replacedPaths.get(mediaId)!, data: mediaData }
 
     if (currentlyGetting.includes(mediaId)) {
-        await waitUntilValueIsDefined(() => replacedPaths.has(mediaId), 50, 10000)
+        await waitUntilValueIsDefined(() => replacedPaths.has(mediaId) || locatedMediaCache.get(path) === null, 50, 10000)
         if (replacedPaths.has(mediaId)) return { ...replacedPaths.get(mediaId)!, data: mediaData }
         return null
     }
@@ -213,7 +226,7 @@ export async function getMedia(path: string, size: number = mediaSize.drawerSize
         // setTimeout(() => loadThumbnail(path, data.size), 1000)
 
         const located = await locateMediaFile(path)
-        if (!located) return finish()
+        if (!located) return null
 
         const newPath = located.path
         if (!located.hasChanged) addToMediaFolder(newPath)
@@ -235,8 +248,7 @@ export async function getMedia(path: string, size: number = mediaSize.drawerSize
         if (!path || !thumbnail) return null
         if (altPath) replacedPaths.set(mediaId, { path, altPath, thumbnail })
         else replacedPaths.set(mediaId, { path, thumbnail })
-        if (altPath) return { path, altPath, thumbnail, data: mediaData }
-        return { path, thumbnail, data: mediaData }
+        return { path, altPath, thumbnail, data: mediaData }
     }
 }
 
@@ -252,7 +264,7 @@ export async function getMediaCached(path: string, size: number = mediaSize.draw
     if (replacedPaths.has(mediaId)) return { ...replacedPaths.get(mediaId)!, data: mediaData }
 
     if (currentlyGetting.includes(mediaId)) {
-        await waitUntilValueIsDefined(() => replacedPaths.has(mediaId), 50, 10000)
+        await waitUntilValueIsDefined(() => replacedPaths.has(mediaId) || locatedMediaCache.get(path) === null, 50, 10000)
         if (replacedPaths.has(mediaId)) return { ...replacedPaths.get(mediaId)!, data: mediaData }
     }
 
@@ -260,57 +272,48 @@ export async function getMediaCached(path: string, size: number = mediaSize.draw
 }
 
 export async function locateMediaFile(path: string) {
+    if (!path || typeof path !== "string") return null
     // remote clients: media lives on the server, so this machine can't locate it on disk
-    if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("blob:") || path.startsWith("freeshow-protected://") || isRemoteMedia()) return { path, hasChanged: false }
+    if (!isLocalFile(path) || isRemoteMedia()) return { path, hasChanged: false }
+    if (locatedMediaCache.has(path)) return locatedMediaCache.get(path)!
 
     let folders: string[] = []
     if (get(special).autoLocateMedia !== false) {
         const mediaType = getMediaType(getExtension(path))
-        if (mediaType === "audio") folders = Object.values(get(audioFolders)).map((a) => a.path!)
-        else folders = Object.values(get(mediaFolders)).map((a) => a.path!)
+        folders = Object.values(get(mediaType === "audio" ? audioFolders : mediaFolders)).map((a) => a.path!)
     }
 
-    const result = await requestMain(Main.LOCATE_MEDIA_FILE, { filePath: path, folders })
-
-    // if (!result) newToast("error.media")
-    // else if (result.hasChanged) newToast("toast.media_replaced")
-
+    const result = (await requestMain(Main.LOCATE_MEDIA_FILE, { filePath: path, folders })) || null
+    locatedMediaCache.set(path, result)
     return result
 }
 
-const existingMedia: string[] = []
 export async function doesMediaExist(path: string, noCache = false) {
-    if (existingMedia.includes(path)) return true
+    if (!path || typeof path !== "string") return false
     // remote clients can't stat the server's files locally; the gateway serves them
     if (isRemoteMedia()) return true
+    if (!isLocalFile(path)) return true
+    if (!noCache && mediaExistsCache.has(path)) return mediaExistsCache.get(path)!
 
     if (noCache) {
-        const existsDataNoCache = await requestMain(Main.DOES_MEDIA_EXIST, { path, noCache })
-        if (!existsDataNoCache?.exists) return false
-
-        existingMedia.push(path)
-        return true
+        const exists = !!(await requestMain(Main.DOES_MEDIA_EXIST, { path, noCache }))?.exists
+        mediaExistsCache.set(path, exists)
+        return exists
     }
 
     const creationTime = get(media)[path]?.creationTime || 0
     const existsData = await requestMain(Main.DOES_MEDIA_EXIST, { path, creationTime })
-    if (!existsData) return false
+    const exists = !!existsData?.exists
+    mediaExistsCache.set(path, exists)
 
-    // update "media"
-    if (!existsData.exists || !creationTime) {
+    if (existsData && (!exists || !creationTime)) {
         media.update((a) => {
-            if (existsData.exists && a[path]) {
-                a[path].creationTime = existsData.creationTime
-            } else {
-                a[path] = { creationTime: existsData.creationTime }
-            }
-
+            a[path] = { ...a[path], creationTime: existsData.creationTime }
             return a
         })
     }
 
-    if (existsData.exists) existingMedia.push(path)
-    return existsData.exists
+    return exists
 }
 
 export async function getMediaInfo(path: string): Promise<{ codecs: string[]; mimeType: string; mimeCodec: string } | null> {
@@ -347,7 +350,7 @@ export async function isVideoSupported(path: string) {
     if (!info?.codecs) return true
 
     // HEVC (H.265) / Timecode
-    const unsupportedCodecs = /(hevc|hvc1|ap4h|tmcd)/i
+    const unsupportedCodecs = /(hevc|ap4h|tmcd)/i
     const isUnsupported = info.codecs.length && info.codecs.every((codec) => unsupportedCodecs.test(codec))
 
     // not reliable:
@@ -615,18 +618,21 @@ const capturing = new Set<string>()
 const retries: { [key: string]: number } = {}
 export function captureCanvas(data: { input: string; output: string; size: any; extension: string; config: any; id: string; seek?: number }) {
     let completed = false
+    let mediaElem: HTMLImageElement | HTMLVideoElement | null = null
+
     if (capturing.has(data.output)) return exit()
     capturing.add(data.output)
 
     const canvas = document.createElement("canvas")
 
     const isImage = imageExtensions.includes(data.extension)
-    const mediaElem = document.createElement(isImage ? "img" : "video")
+    mediaElem = document.createElement(isImage ? "img" : "video")
 
     // Only request CORS for non-local sources.
     if (!isLocalFile(data.input)) (mediaElem as any).crossOrigin = "anonymous"
 
     mediaElem.addEventListener(isImage ? "load" : "loadeddata", async () => {
+        if (!mediaElem) return
         const currentMediaSize = isImage ? { width: (mediaElem as HTMLImageElement).naturalWidth, height: (mediaElem as HTMLImageElement).naturalHeight } : { width: (mediaElem as HTMLVideoElement).videoWidth, height: (mediaElem as HTMLVideoElement).videoHeight }
         const newSize = getNewSize(currentMediaSize, data.size || {})
         canvas.width = newSize.width
@@ -639,10 +645,10 @@ export function captureCanvas(data: { input: string; output: string; size: any; 
 
             await new Promise((resolve) => {
                 const handler = () => {
-                    mediaElem.removeEventListener("seeked", handler)
+                    mediaElem?.removeEventListener("seeked", handler)
                     resolve(null)
                 }
-                mediaElem.addEventListener("seeked", handler)
+                mediaElem?.addEventListener("seeked", handler)
             })
 
             await new Promise(requestAnimationFrame)
@@ -650,7 +656,7 @@ export function captureCanvas(data: { input: string; output: string; size: any; 
         }
 
         // wait until loaded
-        const hasLoaded = await waitUntilValueIsDefined(() => (isImage ? (mediaElem as HTMLImageElement).complete : (mediaElem as HTMLVideoElement).readyState === 4), 20)
+        const hasLoaded = await waitUntilValueIsDefined(() => (isImage ? (mediaElem as HTMLImageElement)?.complete : (mediaElem as HTMLVideoElement)?.readyState === 4), 20)
         if (!hasLoaded) return exit()
 
         captureCanvasData(currentMediaSize)
@@ -658,14 +664,14 @@ export function captureCanvas(data: { input: string; output: string; size: any; 
 
     // this should not get called becaues the file is checked existing, but here in case
     mediaElem.addEventListener("error", (err) => {
-        if (!mediaElem.src || completed) return
+        if (!mediaElem?.src || completed) return
 
         console.error("Could not load media:", data.input, err)
         if (!retries[data.input]) retries[data.input] = 0
         retries[data.input]++
 
-        if (retries[data.input] > 2) return exit()
-        else setTimeout(() => (isImage ? "" : (mediaElem as HTMLVideoElement).load()), 3000)
+        if (retries[data.input] > 2 || isLocalFile(data.input)) return exit()
+        else setTimeout(() => (isImage ? "" : (mediaElem as HTMLVideoElement)?.load()), 3000)
     })
 
     mediaElem.src = encodeFilePath(data.input)
@@ -673,7 +679,7 @@ export function captureCanvas(data: { input: string; output: string; size: any; 
 
     async function captureCanvasData(currentMediaSize) {
         const ctx = canvas.getContext("2d")
-        if (!ctx || completed) return exit()
+        if (!ctx || completed || !mediaElem) return exit()
 
         // ensure lessons are downloaded and loaded before capturing
         const isLessons = data.input.includes("Lessons")
@@ -692,7 +698,7 @@ export function captureCanvas(data: { input: string; output: string; size: any; 
 
                         // unload
                         capturing.delete(data.output)
-                        mediaElem.src = ""
+                        if (mediaElem) mediaElem.src = ""
                     })
                     .catch(() => exit())
             })
@@ -711,9 +717,11 @@ export function captureCanvas(data: { input: string; output: string; size: any; 
         capturing.delete(data.output)
 
         // unload
-        mediaElem.onload = null
-        mediaElem.onerror = null
-        mediaElem.src = ""
+        if (mediaElem) {
+            mediaElem.onload = null
+            mediaElem.onerror = null
+            mediaElem.src = ""
+        }
     }
 }
 

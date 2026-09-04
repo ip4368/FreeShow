@@ -7,6 +7,8 @@ import ActionHistory from "../components/main/popups/ActionHistory.svelte"
 import Alert from "../components/main/popups/Alert.svelte"
 import AspectRatio from "../components/main/popups/AspectRatio.svelte"
 import AudioStream from "../components/main/popups/AudioStream.svelte"
+import AudioEffect from "../components/main/popups/AudioEffect.svelte"
+import AddAudioEffect from "../components/main/popups/AddAudioEffect.svelte"
 import CategoryAction from "../components/main/popups/CategoryAction.svelte"
 import ChangeIcon from "../components/main/popups/ChangeIcon.svelte"
 import ChangeOutputValues from "../components/main/popups/ChangeOutputValues.svelte"
@@ -44,6 +46,7 @@ import Export from "../components/main/popups/export/Export.svelte"
 import FindReplace from "../components/main/popups/FindReplace.svelte"
 import History from "../components/main/popups/History.svelte"
 import Import from "../components/main/popups/Import.svelte"
+import ImportCalendar from "../components/main/popups/ImportCalendar.svelte"
 import ImportScripture from "../components/main/popups/ImportScripture.svelte"
 import Initialize from "../components/main/popups/Initialize.svelte"
 import InteractionInput from "../components/main/popups/InteractionInput.svelte"
@@ -122,6 +125,8 @@ export const popups: { [key in Popups]: ComponentType } = {
     variable: Variable,
     interaction_input: InteractionInput,
     audio_stream: AudioStream,
+    audio_effect: AudioEffect,
+    add_audio_effect: AddAudioEffect,
     now_playing: NowPlaying,
     aspect_ratio: AspectRatio,
     max_lines: MaxLines,
@@ -129,6 +134,7 @@ export const popups: { [key in Popups]: ComponentType } = {
     media_fit: MediaFit,
     metadata_display: MetadataDisplay,
     import_scripture: ImportScripture,
+    import_calendar: ImportCalendar,
     create_collection: CreateCollection,
     edit_event: EditEvent,
     edit_chart: EditChart,

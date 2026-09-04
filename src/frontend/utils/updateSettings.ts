@@ -6,6 +6,7 @@ import type { Output } from "../../types/Output"
 import type { SaveListSettings, SaveListSyncedSettings } from "../../types/Save"
 import type { Metadata, Themes } from "../../types/Settings"
 import { initAudioRouting } from "../audio/routing/audioRoutingInit"
+import { migrateAudioEffects } from "../audio/effects/audioEffectsHelpers"
 import { clone, keysToID } from "../components/helpers/array"
 import { isSocketTransport } from "../IPC/transport"
 import { checkFFmpeg, checkWindowCapture, setOutput, toggleOutputs } from "../components/helpers/output"
@@ -26,6 +27,7 @@ import {
     autoOutput,
     autosave,
     calendarAddShow,
+    calendars,
     categories,
     cloudSyncData,
     companion,
@@ -125,6 +127,10 @@ export function updateSettings(data: any) {
     if (data.equalizerConfig && !data.audioEffects?.main) {
         data.audioEffects = { main: { equalizer: clone(data.equalizerConfig) } }
         delete data.equalizerConfig
+    }
+    // pre v1.6.5 (audioEffects was not in stack format)
+    if (data.audioEffects) {
+        data.audioEffects = migrateAudioEffects(data.audioEffects)
     }
 
     // When connected to a server the media/audio library lives there, so ignore this
@@ -368,6 +374,7 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
     emitters: (v: any) => emitters.set(v),
     midiIn: (v: any) => actions.set(v),
     videoMarkers: (v: any) => videoMarkers.set(v),
+    calendars: (v: any) => calendars.set(v),
     mediaTags: (v: any) => mediaTags.set(v),
     playerTags: (v: any) => playerTags.set(v),
     actionTags: (v: any) => actionTags.set(v),
@@ -432,6 +439,12 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
             delete v.deletedEffects
         }
         if (Object.keys(deletedDefaultsValue).length) deletedDefaults.set(deletedDefaultsValue)
+
+        // DEPRECATED (migrate) - only in 1.6.5-beta
+        if (v.calendars && !Object.keys(get(calendars)).length) {
+            calendars.set(v.calendars)
+            delete v.calendars
+        }
 
         special.set(v)
     },

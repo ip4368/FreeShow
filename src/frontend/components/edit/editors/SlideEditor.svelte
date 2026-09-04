@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte"
     import type { MediaStyle } from "../../../../types/Main"
-    import { activeEdit, activePopup, activeShow, alertMessage, editMode, focusMode, media, outputs, overlays, playerVideos, refreshEditSlide, resized, showsCache, slideNotesActive, special, styles } from "../../../stores"
+    import { activeEdit, activePopup, activeShow, alertMessage, editMode, focusMode, media, outputs, overlays, playerVideos, resized, showsCache, slideNotesActive, special, styles } from "../../../stores"
     import { transposeText } from "../../../utils/chordTranspose"
     import { DEFAULT_WIDTH } from "../../../utils/common"
     import { translateText } from "../../../utils/language"
@@ -173,8 +173,6 @@
                 delete a[currentShowId].slides[slideId].items[activeItems[0] || 0].autoFontSize
                 return a
             })
-
-            refreshEditSlide.set(true)
         }
     }
 
@@ -370,7 +368,7 @@
                             {#each layoutSlide.overlays as id}
                                 {#if $overlays[id]}
                                     {#each $overlays[id]?.items || [] as item}
-                                        <Textbox {item} ref={{ type: "overlay", id }} />
+                                        <Textbox {item} ref={{ type: "overlay", id }} preview />
                                     {/each}
                                 {/if}
                             {/each}
@@ -416,7 +414,7 @@
     {/if}
 
     {#if !$focusMode && !isLocked && !$slideNotesActive && !$special.slideTimelineActive}
-        <FloatingInputs side="left" bottom={notesVisible ? bottomHeight : 10} onlyOne={hasBackground}>
+        <FloatingInputs side="left" bottom={notesVisible ? bottomHeight : 10} onlyOne={$editMode !== "chords" && hasBackground}>
             {#if $editMode === "chords"}
                 <MaterialButton on:click={transposeUp} title="edit.transpose_up">
                     <Icon id="arrow_up" size={1.3} white />

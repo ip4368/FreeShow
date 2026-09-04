@@ -8,7 +8,7 @@ import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "..
 import { isSocketTransport } from "../IPC/transport"
 import { initCrdtClient } from "./crdt/crdtClient"
 import { cameraManager } from "../media/cameraManager"
-import { activePopup, alertMessage, cachePath, capabilities, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, providerConnections, shows, special, version, windowState } from "../stores"
+import { activePopup, activeProfile, alertMessage, cachePath, capabilities, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, profiles, providerConnections, shows, special, version, windowState } from "../stores"
 import { startTracking } from "./analytics"
 import { wait, waitUntilValueIsDefined } from "./common"
 import { getDefaultElements } from "./createData"
@@ -76,7 +76,10 @@ async function startupMain() {
 
     storeSubscriber()
     remoteListen()
-    checkStartupActions()
+
+    const hasProfiles = Object.keys(get(profiles)).filter((a) => a !== "admin").length > 0
+    if (!hasProfiles || get(activeProfile) !== null) checkStartupActions()
+
     startTracking()
     contentProviderSync(true)
 

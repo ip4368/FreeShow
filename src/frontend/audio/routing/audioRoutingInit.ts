@@ -59,11 +59,8 @@ export async function initAudioRouting(data: AudioRoutingConfig | null) {
     outputsList.forEach((out) => {
         // any network outputs should have their own channel
         if (out.ndi || out.webrtc || out.rtmp) {
-            channels.push({ id: `channel_${out.id}`, name: out.name, color: out.color })
-            connections.push({ from: "drawer_audio", to: `channel_${out.id}` })
-            connections.push({ from: "playlists_default", to: `channel_${out.id}` })
-            connections.push({ from: `output_win_sub_${out.id}`, to: `channel_${out.id}` })
-            connections.push({ from: `channel_${out.id}`, to: `network_sub_${out.id}` })
+            channels.push({ id: `channel_${out.id}`, name: out.name, color: out.color, outputLink: out.id })
+            connections.push(...createOutputConnections(out.id))
             return
         }
 
@@ -88,6 +85,36 @@ export async function resetAudioRouting() {
     }
 }
 
+// make sure at least one "active" output is connected to the main channel when creating a new output
+export function checkPrimaryOutputRouting() {
+    const outputsList = getAllOutputs()
+    const primaryOutputs = outputsList.filter((out) => out.enabled && !out.ndi && !out.webrtc && !out.rtmp && !out.stageOutput)
+    const outputInputs = primaryOutputs.map((out) => `output_win_sub_${out.id}`)
+    if (!outputInputs.length) return
+
+    const connections = get(audioRouting)?.connections || []
+    const hasMainConnection = connections.some((c) => outputInputs.includes(c.from) && c.to === "main")
+    if (hasMainConnection) return
+
+    audioRouting.update((a) => {
+        if (!a) return a
+        a.connections.push({ from: outputInputs[0], to: "main" })
+        return a
+    })
+}
+
+function createOutputConnections(outputId: string) {
+    const channelId = `channel_${outputId}`
+    const connections: AudioRoutingConnection[] = []
+
+    connections.push({ from: "drawer_audio", to: channelId })
+    connections.push({ from: "playlists_default", to: channelId })
+    connections.push({ from: `output_win_sub_${outputId}`, to: channelId })
+    connections.push({ from: channelId, to: `network_sub_${outputId}` })
+
+    return connections
+}
+
 export function createOutputAudioChannel(outputId: string) {
     const output = get(outputs)[outputId]
     if (!output) return
@@ -99,13 +126,25 @@ export function createOutputAudioChannel(outputId: string) {
         const channelId = `channel_${outputId}`
         if (channels.some((c) => c.id === channelId)) return a
 
-        channels.push({ id: channelId, name: output.name, color: output.color })
-        connections.push({ from: "drawer_audio", to: channelId })
-        connections.push({ from: "playlists_default", to: channelId })
-        connections.push({ from: `output_win_sub_${outputId}`, to: channelId })
-        connections.push({ from: channelId, to: `network_sub_${outputId}` })
+        channels.push({ id: channelId, name: output.name, color: output.color, outputLink: outputId })
+        connections.push(...createOutputConnections(outputId))
 
         return { ...a, channels, connections: deduplicateConnections(connections) }
+    })
+}
+
+// sync name/color to any linked outputs
+export function syncOutputAudioChannels() {
+    const outs = get(outputs)
+    audioRouting.update((a) => {
+        a?.channels?.forEach((c) => {
+            const out = c.outputLink ? outs[c.outputLink] : null
+            if (!out) return
+
+            if (out.name) c.name = out.name
+            c.color = out.color
+        })
+        return a
     })
 }
 

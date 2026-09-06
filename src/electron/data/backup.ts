@@ -172,12 +172,18 @@ export async function restoreFiles(data?: { path: string }) {
             return
         }
 
-        if (filePath.includes("SETTINGS")) {
+        // exact match on the base name, not a substring test: "SYNCED_SETTINGS.json"
+        // contains "SETTINGS" as a substring, so `.includes()` would misroute it into the
+        // SETTINGS store instead of SYNCED_SETTINGS (and never reach the portableStoreFiles
+        // check below at all, since this branch returns first)
+        const baseName = path.basename(filePath).replace(/\.json$/i, "")
+
+        if (baseName === "SETTINGS") {
             restoreStore(file.content, "SETTINGS")
             return
         }
 
-        const storeId = portableStoreFiles.find((a) => filePath.includes(a))
+        const storeId = portableStoreFiles.find((a) => a === baseName)
 
         if (!storeId) return
         restoreStore(file.content, storeId as keyof typeof _store)

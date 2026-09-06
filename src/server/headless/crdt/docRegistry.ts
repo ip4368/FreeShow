@@ -32,6 +32,16 @@ export function getDoc(showId: string, name = ""): Y.Doc {
     return entry.doc
 }
 
+// drop a resident doc so the next open re-hydrates from disk. Used after an out-of-band
+// write (e.g. RESTORE_UPLOAD) so a live co-editing session doesn't later clobber the
+// freshly restored file with its stale in-memory state.
+export function invalidateDoc(showId: string) {
+    const entry = docs.get(showId)
+    if (!entry) return
+    if (entry.saveTimer) clearTimeout(entry.saveTimer)
+    docs.delete(showId)
+}
+
 export function schedulePersist(showId: string) {
     const entry = docs.get(showId)
     if (!entry) return

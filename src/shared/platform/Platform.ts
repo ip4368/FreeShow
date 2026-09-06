@@ -47,6 +47,19 @@ export interface PersistenceAdapter {
     // data folder locations
     getDataFolderRoot(): string
     getDataFolderPath(id: string): string
+
+    // backup/restore ("backup everything" / "restore" for web + hybrid clients)
+    restoreEntries(entries: { name: string; content: string }[]): RestoreResult
+    buildBackupZip(): Promise<Buffer>
+}
+
+/** Result of applying a restore: which library stores changed (for live broadcast) + status. */
+export interface RestoreResult {
+    finished: boolean
+    error?: string
+    changed?: Record<string, any>
+    /** ids of shows written by this restore, so a caller can invalidate any resident CRDT doc. */
+    restoredShowIds?: string[]
 }
 
 export interface Platform {

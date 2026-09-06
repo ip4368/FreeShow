@@ -8,6 +8,7 @@
 // (socket server / ipc) replies over the MAIN transport.
 
 import { Main } from "../../types/IPC/channels"
+import { unzipBuffer } from "../data/zip"
 import type { Platform } from "../platform/Platform"
 
 type Handler = (data?: any) => any
@@ -49,6 +50,19 @@ export function createPortableResponses(platform: Platform): PortableResponses {
 
         // SAVE
         [Main.SAVE]: (d) => data.save(d),
+
+        // BACKUP / RESTORE (web + hybrid clients; standalone desktop uses the Electron-only RESTORE/BACKUPS)
+        [Main.RESTORE_UPLOAD]: async (d) => {
+            try {
+                const buffer = Buffer.isBuffer(d) ? d : Buffer.from(d)
+                const entries = await unzipBuffer(buffer)
+                return data.restoreEntries(entries)
+            } catch (err) {
+                console.error("Failed to restore upload:", err)
+                return { finished: false, error: (err as Error)?.message || "restore_failed" }
+            }
+        },
+        [Main.BACKUP_DOWNLOAD]: () => data.buildBackupZip(),
 
         // SHOWS
         [Main.SHOW]: (d) => data.loadShow(d),

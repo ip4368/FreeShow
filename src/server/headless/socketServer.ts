@@ -7,6 +7,7 @@
 import type { Server, Socket } from "socket.io"
 import { createPortableResponses } from "../../shared/ipc/createPortableResponses"
 import { HEADLESS_CAPABILITIES } from "../../shared/platform/capabilities"
+import { invalidateDoc } from "./crdt/docRegistry"
 import { handleYjsMessage } from "./crdt/relay"
 import { headlessPlatform } from "./platform/headlessPlatform"
 
@@ -49,6 +50,20 @@ export function registerClient(io: Server, socket: Socket) {
                 socket.emit("MAIN", { data: { channel: "SAVE2", data: result.complete || {} } })
                 for (const [channel, value] of Object.entries(result.changed || {})) {
                     socket.broadcast.emit("MAIN", { data: { channel, data: value } })
+                }
+                return
+            }
+
+            // RESTORE_UPLOAD: reply completion to the uploader, but broadcast the changed
+            // library stores (SHOWS index + any restored resource stores) to EVERY client
+            // including the uploader - unlike SAVE, the uploader doesn't already have this
+            // state locally (it was just written to disk by the restore).
+            if (inner.channel === "RESTORE_UPLOAD") {
+                const result = response || {}
+                socket.emit("MAIN", { data: { channel: inner.channel, data: { finished: !!result.finished, error: result.error } }, listenerId: payload.listenerId })
+                for (const showId of result.restoredShowIds || []) invalidateDoc(showId)
+                for (const [channel, value] of Object.entries(result.changed || {})) {
+                    io.emit("MAIN", { data: { channel, data: value } })
                 }
                 return
             }

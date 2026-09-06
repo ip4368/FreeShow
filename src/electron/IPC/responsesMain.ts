@@ -76,6 +76,13 @@ export const mainResponses: MainResponses = {
     [Main.SAVE]: (a) => save(a),
     [Main.BACKUPS]: () => getBackups(),
     [Main.DELETE_BACKUP]: (data) => deleteBackup(data),
+    // headless-server-only channels (web/hybrid clients upload/download a zip over the
+    // socket transport instead - see src/shared/ipc/createPortableResponses.ts). The
+    // frontend only sends these when connected to a remote server, which routes them
+    // there before they'd ever reach the Electron main process; these exist only to
+    // satisfy MainResponses' exhaustive channel mapping.
+    [Main.RESTORE_UPLOAD]: () => ({ finished: false, error: "not supported on desktop" }),
+    [Main.BACKUP_DOWNLOAD]: () => new Uint8Array(),
     [Main.IMPORT]: (data) => startImport(data),
     [Main.IMPORT_FILES]: (data) => importFiles(data),
     [Main.BIBLE]: (data) => loadScripture(data),

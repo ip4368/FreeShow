@@ -45,6 +45,8 @@ export enum Main {
     SAVE = "SAVE",
     BACKUPS = "BACKUPS",
     DELETE_BACKUP = "DELETE_BACKUP",
+    RESTORE_UPLOAD = "RESTORE_UPLOAD",
+    BACKUP_DOWNLOAD = "BACKUP_DOWNLOAD",
     ///////////////////
     SPELLCHECK = "SPELLCHECK",
     ////

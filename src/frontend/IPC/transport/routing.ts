@@ -69,7 +69,10 @@ export const REMOTE_MAIN_CHANNELS: ReadonlySet<string> = new Set([
     "TEMPLATES",
     "EVENTS",
     "THEMES",
-    "MEDIA" // media LIBRARY metadata (the file bytes are a separate concern, see MEDIA FILES note)
+    "MEDIA", // media LIBRARY metadata (the file bytes are a separate concern, see MEDIA FILES note)
+    // backup/restore for web + hybrid clients (standalone desktop keeps RESTORE/BACKUPS local)
+    "RESTORE_UPLOAD",
+    "BACKUP_DOWNLOAD"
     // NOTE: STAGE (stage-display layouts) is intentionally NOT here — it references
     // machine-specific outputs, so it stays LOCAL on a desktop client (like SETTINGS).
     // NOTE: the batched SAVE channel carries BOTH resource and machine stores, so it is

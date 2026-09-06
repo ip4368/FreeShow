@@ -1,5 +1,6 @@
 import { Main } from "../../types/IPC/channels"
-import type { PersistenceAdapter, Platform } from "../platform/Platform"
+import { unzipBuffer } from "../data/zip"
+import type { PersistenceAdapter, Platform, RestoreResult } from "../platform/Platform"
 
 type CorePortableChannel =
     | Main.LOG
@@ -51,7 +52,13 @@ interface PortablePayloads {
 }
 
 export type PortableHandler<ID extends CorePortableChannel> = ID extends keyof PortablePayloads ? (data: PortablePayloads[ID]) => any : () => any
-export type PortableResponses = { [ID in CorePortableChannel]: PortableHandler<ID> }
+
+interface OptionalPortableResponses {
+    [Main.RESTORE_UPLOAD]?: (value: ArrayBuffer | Uint8Array) => Promise<RestoreResult>
+    [Main.BACKUP_DOWNLOAD]?: () => Promise<Buffer>
+}
+
+export type PortableResponses = { [ID in CorePortableChannel]: PortableHandler<ID> } & OptionalPortableResponses
 
 /**
  * Create Main-channel handlers shared by runtime adapters.
@@ -98,6 +105,22 @@ export function createPortableResponses(platform: Platform) {
         [Main.DATA_PATH]: () => data.getDataFolderRoot(),
         [Main.READ_FOLDER]: (value) => data.readFolderContent(value),
         [Main.READ_FILE]: (value) => ({ content: data.readFile(value.path) }),
-        [Main.CREATE_FOLDER]: (value) => data.createFolder(value)
+        [Main.CREATE_FOLDER]: (value) => data.createFolder(value),
+
+        ...(data.restoreEntries && data.buildBackupZip
+            ? {
+                  [Main.RESTORE_UPLOAD]: async (value: any) => {
+                      try {
+                          const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value)
+                          const entries = await unzipBuffer(buffer)
+                          return data.restoreEntries!(entries)
+                      } catch (err) {
+                          console.error("Failed to restore upload:", err)
+                          return { finished: false, error: (err as Error)?.message || "restore_failed" }
+                      }
+                  },
+                  [Main.BACKUP_DOWNLOAD]: () => data.buildBackupZip!()
+              }
+            : {})
     } satisfies PortableResponses
 }

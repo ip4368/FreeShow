@@ -35,6 +35,7 @@ export interface MainSendPayloads {
     [Main.SAVE]: SaveData
     ////////////
     [Main.DELETE_BACKUP]: { path: string }
+    [Main.RESTORE_UPLOAD]: ArrayBuffer | Uint8Array
     [Main.SPELLCHECK]: { addToDictionary?: string; fixSpelling?: string }
     [Main.URL]: string
     [Main.LANGUAGE]: { lang: string; strings: Dictionary }
@@ -143,6 +144,8 @@ export interface MainReturnPayloads {
     ///
     // [Main.SAVE]: { closeWhenFinished: boolean; customTriggers: any } | Promise<void>
     [Main.BACKUPS]: { path: string; name: string; date: number; size: number }[]
+    [Main.RESTORE_UPLOAD]: { finished: boolean; error?: string }
+    [Main.BACKUP_DOWNLOAD]: Uint8Array | ArrayBuffer
     [Main.SHOWS]: TrimmedShows
     // STORES
     [Main.SYNCED_SETTINGS]: { [key in SaveListSyncedSettings]: any }

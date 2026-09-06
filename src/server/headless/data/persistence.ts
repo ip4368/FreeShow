@@ -7,7 +7,8 @@
 import fs from "fs"
 import type { Show, TrimmedShow, TrimmedShows } from "../../../types/Show"
 import { deleteFile, doesPathExist, joinPath, loadTupleFile, parseJSON, readFile, readFolder, writeFile } from "../../../shared/data/fsCore"
-import type { PersistenceAdapter, SaveResult } from "../../../shared/platform/Platform"
+import type { PersistenceAdapter, RestoreResult, SaveResult } from "../../../shared/platform/Platform"
+import { zipEntries } from "../../../shared/data/zip"
 import { getDataFolderPath, getDataFolderRoot, resolveInSandbox, toSandboxRelative } from "./dataPaths"
 import { getStore, getStoreValue, setStore, setStoreValue } from "./headlessStore"
 
@@ -219,6 +220,94 @@ function isStoreKey(key: string): boolean {
     return STORE_KEYS.has(key)
 }
 
+// mirrors storeFilesData's `portable: true` set in src/electron/data/store.ts (plus
+// SETTINGS, which desktop's startBackup() also includes outside of cloud sync)
+const BACKUP_STORE_KEYS = ["SETTINGS", "SYNCED_SETTINGS", "THEMES", "PROJECTS", "STAGE", "OVERLAYS", "TEMPLATES", "EVENTS"]
+
+// ----- BACKUP / RESTORE (web + hybrid clients; see src/electron/data/backup.ts for the desktop equivalent) -----
+
+export function restoreEntries(entries: { name: string; content: string }[]): RestoreResult {
+    try {
+        const showsPath = getDataFolderPath("shows")
+        const changed: Record<string, any> = {}
+        const restoredShowIds: string[] = []
+        let showsRestored = false
+
+        for (const file of entries) {
+            if (!file.content) continue
+            const name = file.name
+
+            if (name.includes("SHOWS_CONTENT")) {
+                // legacy combined-file format (pre single-.show-file backups)
+                const shows = parseJSON<Record<string, Show>>(file.content)
+                if (!shows) continue
+                for (const [id, show] of Object.entries(shows)) {
+                    if (!show) continue
+                    const fileName = String(show.name || id) + ".show"
+                    writeFile(joinPath(showsPath, fileName), JSON.stringify([id, show]))
+                    restoredShowIds.push(id)
+                }
+                showsRestored = true
+                continue
+            }
+
+            if (name.startsWith("SHOWS/")) {
+                const parsed = parseJSON<[string, Show]>(file.content)
+                if (!parsed?.[0]) continue
+                writeFile(joinPath(showsPath, baseName(name)), file.content)
+                restoredShowIds.push(parsed[0])
+                showsRestored = true
+                continue
+            }
+
+            // exact match on the base name, not a substring test: "SYNCED_SETTINGS.json"
+            // contains "SETTINGS" as a substring, so `.includes()` would misroute it into
+            // the SETTINGS store instead of SYNCED_SETTINGS (this also affects the
+            // Electron desktop restore path - see src/electron/data/backup.ts restoreFiles)
+            const base = baseName(name).replace(/\.json$/i, "")
+            const storeId = BACKUP_STORE_KEYS.find((id) => id === base)
+            if (!storeId) continue
+
+            const parsed = parseJSON<any>(file.content)
+            if (!parsed) continue
+
+            if (storeId === "SETTINGS") {
+                delete parsed.dataPath
+                delete parsed.showsPath
+            }
+
+            setStore(storeId, parsed)
+            if (LIBRARY_STORE_KEYS.includes(storeId)) changed[storeId] = parsed
+        }
+
+        if (showsRestored) changed.SHOWS = loadShows()
+
+        return { finished: true, changed, restoredShowIds }
+    } catch (err) {
+        console.error("Failed to restore entries:", err)
+        return { finished: false, error: (err as Error)?.message || "restore_failed" }
+    }
+}
+
+export async function buildBackupZip(): Promise<Buffer> {
+    const entries: { name: string; content: string }[] = []
+
+    for (const key of BACKUP_STORE_KEYS) {
+        entries.push({ name: key + ".json", content: JSON.stringify(getStore(key)) })
+    }
+
+    const showsPath = getDataFolderPath("shows")
+    if (doesPathExist(showsPath)) {
+        for (const fileName of readFolder(showsPath)) {
+            if (!fileName.toLowerCase().endsWith(".show")) continue
+            const content = readFile(joinPath(showsPath, fileName))
+            if (content) entries.push({ name: "SHOWS/" + fileName, content })
+        }
+    }
+
+    return zipEntries(entries)
+}
+
 export const headlessPersistence: PersistenceAdapter = {
     getStore,
     setStore,
@@ -234,5 +323,7 @@ export const headlessPersistence: PersistenceAdapter = {
     readFolderContent,
     createFolder,
     getDataFolderRoot,
-    getDataFolderPath
+    getDataFolderPath,
+    restoreEntries,
+    buildBackupZip
 }

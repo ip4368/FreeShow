@@ -6,7 +6,7 @@
     import { AudioPlayer } from "../../../audio/audioPlayer"
     import { AudioPlaylist } from "../../../audio/audioPlaylist"
     import { addProjectItem } from "../../../converters/project"
-    import { activePlaylist, activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, outLocked, selectAllAudio, selected } from "../../../stores"
+    import { activePlaylist, activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, mediaLibraryVersion, outLocked, selectAllAudio, selected } from "../../../stores"
     import { translateText } from "../../../utils/language"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
@@ -15,6 +15,7 @@
     import { getExtension, getFileName, getMediaType } from "../../helpers/media"
     import { isSocketTransport } from "../../../IPC/transport"
     import { uploadToServer } from "../../../utils/mediaGateway"
+    import { trashPathsWithConfirm } from "../../../utils/trash"
     import { joinTime, secondsToTime } from "../../helpers/time"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
@@ -24,6 +25,7 @@
     import AudioStreams from "../live/AudioStreams.svelte"
     import Microphones from "../live/Microphones.svelte"
     import Folder from "../media/Folder.svelte"
+    import TrashBrowser from "../media/TrashBrowser.svelte"
     import AudioEffect from "./AudioEffect.svelte"
     import AudioFile from "./AudioFile.svelte"
     import Metronome from "./Metronome.svelte"
@@ -40,10 +42,10 @@
 
     $: playlist = active && $audioPlaylists[active]
 
-    $: isDefault = ["all", "favourites", "effects_library", "inputs", "metronome"].includes(active || "")
+    $: isDefault = ["all", "favourites", "effects_library", "inputs", "metronome", "trash"].includes(active || "")
     $: rootPath = isDefault || playlist ? "" : active !== null ? $audioFolders[active]?.path || "" : ""
     $: path = isDefault || playlist ? "" : rootPath
-    $: name = active === "all" ? "category.all" : active === "favourites" ? "category.favourites" : active === "effects_library" ? "category.sound_effects" : rootPath === path ? (active !== "inputs" && active !== "metronome" && active !== null ? $audioFolders[active]?.name || "" : "") : splitPath(path).name
+    $: name = active === "all" ? "category.all" : active === "favourites" ? "category.favourites" : active === "effects_library" ? "category.sound_effects" : active === "trash" ? "category.trash" : rootPath === path ? (active !== "inputs" && active !== "metronome" && active !== null ? $audioFolders[active]?.name || "" : "") : splitPath(path).name
 
     // get list of files & folders
     let prevActive: null | string = null
@@ -67,6 +69,9 @@
             })
 
             openFolder("effects_library")
+        } else if (active === "trash") {
+            // server trash renders from its own channel (TrashBrowser)
+            prevActive = active
         } else if (active === "all") {
             if (active === prevActive) return
             prevActive = active
@@ -103,6 +108,27 @@
         uploading = ""
         if (uploadInput) uploadInput.value = ""
         requestFiles(path, currentDepth)
+    }
+
+    // another client (or the expiry sweep) changed the server library: re-request this view
+    let lastLibVersion = 0
+    $: if ($mediaLibraryVersion.n > lastLibVersion) {
+        lastLibVersion = $mediaLibraryVersion.n
+        if (active !== "trash" && active !== "inputs" && active !== "effects_library" && active !== "metronome" && !playlist) {
+            prevActive = ""
+            updateContent()
+        }
+    }
+
+    async function deleteCurrentFolder() {
+        if (!path) return
+        const result = await trashPathsWithConfirm([path])
+        // the folder is gone — step back to the drawer root (broadcast refreshes the rest)
+        if (result?.trashed.length) {
+            path = rootPath
+            prevActive = ""
+            updateContent()
+        }
     }
 
     let requesting = 0
@@ -349,8 +375,8 @@
     </div>
 {/if}
 
-<div class="scroll" style="flex: 1;overflow-y: auto;" class:full={active === "inputs" || active === "effects_library"} bind:this={scrollElem}>
-    <div class="grid" style={active !== "inputs" && active !== "effects_library" && (playlist ? playlist.songs.length : searchedFiles.length) ? "" : "height: 100%;"}>
+<div class="scroll" style="flex: 1;overflow-y: auto;" class:full={active === "inputs" || active === "effects_library" || active === "trash"} bind:this={scrollElem}>
+    <div class="grid" style={active !== "inputs" && active !== "effects_library" && active !== "trash" && (playlist ? playlist.songs.length : searchedFiles.length) ? "" : "height: 100%;"}>
         {#if active === "inputs"}
             {#if inputsTab === "microphones"}
                 <Microphones />
@@ -359,6 +385,8 @@
             {/if}
         {:else if active === "metronome"}
             <Metronome />
+        {:else if active === "trash"}
+            <TrashBrowser kind="audio" />
         {:else if playlist && playlistSettings}
             <div class="settings">
                 <MaterialNumberInput label="settings.audio_crossfade (s)" value={playlist?.crossfade || 0} max={30} step={0.5} on:change={(e) => AudioPlaylist.update(active || "", "crossfade", e.detail)} />
@@ -481,7 +509,7 @@
             <Icon size={1.1} id="options" white={!playlistSettings} />
         </MaterialButton>
     </FloatingInputs>
-{:else if active === "all" || active === "favourites"}
+{:else if active === "all" || active === "favourites" || active === "trash"}
     <!-- nothing -->
 {:else}
     <!--  -->
@@ -512,6 +540,10 @@
             <MaterialButton title="Upload files" disabled={!!uploading} on:click={() => uploadInput?.click()}>
                 <Icon id="upload" white />
                 {#if uploading}<span style="font-size: 0.8em;margin-inline-start: 6px;">{uploading}</span>{/if}
+            </MaterialButton>
+            <!-- delete the currently viewed SERVER folder (moves to server trash) -->
+            <MaterialButton title="actions.delete_folder" on:click={deleteCurrentFolder}>
+                <Icon id="delete" white />
             </MaterialButton>
         </FloatingInputs>
     {/if}

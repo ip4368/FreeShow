@@ -1,17 +1,18 @@
 <script lang="ts">
-    import { onDestroy } from "svelte"
+    import { onDestroy, onMount } from "svelte"
     import { uid } from "uid"
     import { Main } from "../../../../types/IPC/Main"
     import { ToMain } from "../../../../types/IPC/ToMain"
     import { AudioPlaylist } from "../../../audio/audioPlaylist"
     import { destroyMain, receiveToMain, requestMain, sendMain } from "../../../IPC/main"
-    import { activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, popupData } from "../../../stores"
+    import { activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, mediaLibraryVersion, popupData } from "../../../stores"
     import { isSocketTransport } from "../../../IPC/transport"
     import { getAccess } from "../../../utils/profile"
     import { keysToID, sortObject } from "../../helpers/array"
+    import { listTrashEntries } from "../../../utils/trash"
     import { addDrawerFolder } from "../../helpers/dropActions"
     import Icon from "../../helpers/Icon.svelte"
-    import { countFolderMediaItems } from "../../helpers/media"
+    import { countFolderMediaItems, getExtension, getMediaType } from "../../helpers/media"
     import T from "../../helpers/T.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import NavigationSections from "./NavigationSections.svelte"
@@ -49,6 +50,16 @@
     $: playlists = !!Object.keys($audioPlaylists).length
     // ...(playlists ? [getAudioPlaylists($audioPlaylists)] : []),
 
+    // server trash badge (remote only): audio files + folders (folders may hold mixed content)
+    let trashCount = 0
+    async function updateTrashCount() {
+        if (!remoteLibrary) return
+        const { entries } = await listTrashEntries()
+        trashCount = entries.filter((e) => e.isFolder || getMediaType(getExtension(e.name)) === "audio").length
+    }
+    onMount(() => void updateTrashCount())
+    $: if ($mediaLibraryVersion.n) void updateTrashCount()
+
     let sections: any[] = []
     $: sections = [
         [
@@ -58,7 +69,8 @@
         [{ id: "inputs", label: "emitters.inputs", icon: "input" }, "SEPARATOR", { id: "metronome", label: "audio.metronome", icon: "metronome" }],
         [{ id: "effects_library", label: "category.sound_effects", icon: "effect", count: effectsLength, hidden: !effectsLength && activeSubTab !== "effects_library" }],
         [{ id: "TITLE", label: "audio.playlists" }, ...getAudioPlaylists($audioPlaylists)],
-        [{ id: "TITLE", label: "media.folders" }, ...convertToButton(foldersList, folderLengths)]
+        [{ id: "TITLE", label: "media.folders" }, ...convertToButton(foldersList, folderLengths)],
+        ...(remoteLibrary ? [[{ id: "trash", label: "category.trash", icon: "delete", count: trashCount }]] : [])
     ]
 
     function getAudioPlaylists(playlistUpdater) {

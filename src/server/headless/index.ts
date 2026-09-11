@@ -21,6 +21,8 @@ import { setAuthToken, socketAuth } from "./auth"
 import type { CliArgs, ServerConfig } from "./config"
 import { parseArgs, resolveConfig } from "./config"
 import { getDataFolderRoot, setDataRoot } from "./data/dataPaths"
+import { getMediaLibraryVersion } from "./data/libraryVersion"
+import { startTrashSweep } from "./data/trash"
 import { registerHttpRoutes } from "./httpRoutes"
 import { registerClient } from "./socketServer"
 
@@ -113,6 +115,9 @@ export function startHeadlessServer(args: CliArgs = {}) {
 
     io.use(socketAuth)
     io.on("connection", (socket) => registerClient(io, socket))
+
+    // trash expiry (also runs once immediately for entries that expired while down)
+    startTrashSweep((swept, paths) => io.emit("MAIN", { data: { channel: "MEDIA_LIBRARY_CHANGED", data: { kind: "expired", ids: swept, paths, v: getMediaLibraryVersion() } } }))
 
     server.listen(config.port, config.host, () => logStartup(config, token, generated))
 

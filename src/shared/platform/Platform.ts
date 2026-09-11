@@ -44,6 +44,15 @@ export interface PersistenceAdapter {
     // create a subfolder within `path`; returns the new folder's (sandbox-relative) path
     createFolder(data: { path: string; name: string }): string
 
+    // trash (remote drawer deletes move here; entries expire after 30 days)
+    trashFiles(data: { paths: string[]; deletedBy?: string }): { trashed: any[]; failed: { path: string; reason: string }[]; paths: string[] }
+    restoreTrash(data: { ids: string[] }): { restored: { id: string; path: string; originalPath: string; renamed: boolean }[]; failed: { path: string; reason: string }[]; paths: string[]; manifestError?: string }
+    deleteTrash(data: { ids: string[] }): { deleted: string[]; failed: { path: string; reason: string }[]; paths: string[]; manifestError?: string }
+    emptyTrash(): { deleted: string[]; paths: string[]; manifestError?: string }
+    listTrash(): { entries: any[]; totalSize: number; swept: string[]; v: number }
+    // "used by" scan for delete confirms (shows/projects/overlays/templates/playlists)
+    findMediaUsage(data: { paths: string[]; includeOrphans?: boolean }): { usage: Record<string, any[]>; missing: { path: string; reason: string }[]; summary: { files: number; usedFiles: number } }
+
     // data folder locations
     getDataFolderRoot(): string
     getDataFolderPath(id: string): string

@@ -82,6 +82,14 @@ export function createPortableResponses(platform: Platform): PortableResponses {
         [Main.READ_FOLDER]: (d) => data.readFolderContent(d),
         [Main.CREATE_FOLDER]: (d) => data.createFolder(d),
 
+        // TRASH (remote drawer deletes; socketServer broadcasts mutations to all clients)
+        [Main.TRASH_FILES]: (d) => data.trashFiles(d),
+        [Main.TRASH_RESTORE]: (d) => data.restoreTrash(d),
+        [Main.TRASH_DELETE]: (d) => data.deleteTrash(d),
+        [Main.TRASH_EMPTY]: () => data.emptyTrash(),
+        [Main.TRASH_LIST]: () => data.listTrash(),
+        [Main.MEDIA_USAGE]: (d) => data.findMediaUsage(d),
+
         // WINDOW (no-ops on headless; UI is gated by capabilities.windowControls)
         [Main.MAXIMIZED]: () => false,
         [Main.MAXIMIZE]: () => undefined,

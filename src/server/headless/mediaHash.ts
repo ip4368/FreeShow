@@ -104,3 +104,24 @@ export async function getMediaHash(absPath: string, stat: fs.Stats): Promise<str
 export function resetMediaHashCache() {
     memoryCache = null
 }
+
+/**
+ * Drop cached hashes for sandbox-relative paths (trashed / permanently deleted
+ * files). Keys are stored with platform separators, so both the raw and the
+ * forward-slash form are tried.
+ */
+export function dropCachedHashes(relPaths: string[]) {
+    if (!Array.isArray(relPaths) || !relPaths.length) return
+    const cache = loadCache()
+    let changed = false
+    for (const rel of relPaths) {
+        if (typeof rel !== "string") continue
+        for (const key of [rel, rel.replace(/\\/g, "/")]) {
+            if (cache[key]) {
+                delete cache[key]
+                changed = true
+            }
+        }
+    }
+    if (changed) saveCache(cache)
+}

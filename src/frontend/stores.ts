@@ -186,6 +186,9 @@ export const textEditZoom: Writable<number> = writable(10)
 export const spellcheck: Writable<{ misspelled: string; suggestions: string[] } | null> = writable(null)
 
 // OTHER
+// Bumped on every server trash mutation (incl. expiry sweep) via the
+// MEDIA_LIBRARY_CHANGED broadcast — drawers + trash views refresh on change.
+export const mediaLibraryVersion: Writable<{ kind: string; n: number }> = writable({ kind: "", n: 0 })
 export const notFound: Writable<{ show: string[]; bible: string[] }> = writable({ show: [], bible: [] })
 export const toastMessages: Writable<string[]> = writable([])
 export const alertMessage: Writable<string> = writable("")

@@ -58,9 +58,30 @@ function collectFromItems(into: Set<string>, items: Item[] | undefined) {
     }
 }
 
-function collectFromShowMedia(into: Set<string>, media: Show["media"] | undefined) {
-    if (!media) return
-    for (const entry of Object.values(media)) addPath(into, mediaEntryPath(entry))
+/**
+ * Media ids referenced from a SlideData record: the live background/audio
+ * fields plus the legacy `children` record, whose values may also carry
+ * backgrounds (mirrors remoteTalk's traversal of old show shapes).
+ */
+function collectSlideDataMediaIds(into: string[], slideData: any) {
+    if (!slideData) return
+    if (typeof slideData.background === "string" && slideData.background) into.push(slideData.background)
+    for (const audioId of slideData.audio || []) {
+        if (typeof audioId === "string" && audioId) into.push(audioId)
+    }
+    const children = slideData.children
+    if (children && typeof children === "object" && !Array.isArray(children)) {
+        for (const child of Object.values(children)) collectSlideDataMediaIds(into, child)
+    }
+}
+
+/** Resolve media-map ids to paths (falling back to already-a-path values). */
+function collectResolvedMediaIds(into: Set<string>, media: Show["media"] | undefined, ids: string[]) {
+    for (const id of ids) {
+        const resolved = mediaEntryPath(media?.[id])
+        if (resolved) addPath(into, resolved)
+        else addPath(into, id) // already a path (defensive)
+    }
 }
 
 export interface ShowCollectorContext {
@@ -77,13 +98,22 @@ export function collectMediaPathsFromShow(show: Show | undefined | null, ctx: Sh
     const out = new Set<string>()
     if (!show) return []
 
-    collectFromShowMedia(out, show.media)
+    // NOTE: show.media is NOT collected wholesale — the map can hold orphan
+    // entries for files no slide uses (historical: deletion used to never
+    // prune; see pruneShowMedia). Only entries reachable from layouts/slides
+    // (below) count as references.
 
-    // slides: direct background image + media items
+    // slides: direct background image + media items (+ legacy id-shaped values)
     for (const slide of Object.values(show.slides || {})) {
         if (!slide) continue
         addPath(out, slide.settings?.backgroundImage)
+        if (typeof slide.settings?.backgroundImage === "string" && show.media?.[slide.settings.backgroundImage]) {
+            addPath(out, mediaEntryPath(show.media[slide.settings.backgroundImage]))
+        }
         collectFromItems(out, slide.items)
+        for (const item of slide.items || []) {
+            if (typeof item?.media === "string" && show.media?.[item.media]) addPath(out, mediaEntryPath(show.media[item.media]))
+        }
         // timeline audio actions reference a file path directly
         for (const action of slide.timeline?.actions || []) addPath(out, (action as any)?.data?.path)
     }
@@ -95,16 +125,9 @@ export function collectMediaPathsFromShow(show: Show | undefined | null, ctx: Sh
         for (const action of layout.timeline?.actions || []) addPath(out, (action as any)?.data?.path)
         for (const slideData of layout.slides || []) {
             if (!slideData) continue
-            if (slideData.background) {
-                const resolved = mediaEntryPath(show.media?.[slideData.background])
-                if (resolved) addPath(out, resolved)
-                else addPath(out, slideData.background) // already a path (defensive)
-            }
-            for (const audioId of slideData.audio || []) {
-                const resolved = mediaEntryPath(show.media?.[audioId])
-                if (resolved) addPath(out, resolved)
-                else addPath(out, audioId)
-            }
+            const mediaIds: string[] = []
+            collectSlideDataMediaIds(mediaIds, slideData)
+            collectResolvedMediaIds(out, show.media, mediaIds)
             collectFromOverlayIds(out, slideData.overlays, ctx.overlays)
         }
     }
@@ -130,6 +153,62 @@ function collectFromOverlayIds(into: Set<string>, ids: string[] | undefined, ove
         const overlay = overlays[id]
         if (overlay) collectFromItems(into, overlay.items)
     }
+}
+
+/**
+ * Media-map ids reachable from a show's slides/layouts: layout slide-data
+ * background/audio ids (incl. legacy children), slide backgroundImage-as-id,
+ * and item media-as-id. Mirrors collectMediaPathsFromShow's id handling
+ * exactly — an id counts as reachable only when it resolves in show.media
+ * (unknown ids are treated as raw paths by the collector, never as map
+ * references), so pruning unreachable ids can never break a live reference.
+ */
+export function collectReachableMediaIds(show: Show | undefined | null): Set<string> {
+    const out = new Set<string>()
+    if (!show || !show.media || typeof show.media !== "object") return out
+    const media = show.media
+
+    for (const slide of Object.values(show.slides || {})) {
+        if (!slide) continue
+        const bg = slide.settings?.backgroundImage
+        if (typeof bg === "string" && media[bg]) out.add(bg)
+        for (const item of slide.items || []) {
+            if (typeof item?.media === "string" && media[item.media]) out.add(item.media)
+        }
+    }
+
+    for (const layout of Object.values(show.layouts || {})) {
+        if (!layout) continue
+        for (const slideData of layout.slides || []) {
+            if (!slideData) continue
+            const ids: string[] = []
+            collectSlideDataMediaIds(ids, slideData)
+            for (const id of ids) {
+                if (media[id]) out.add(id)
+            }
+        }
+    }
+
+    return out
+}
+
+/**
+ * Drop show.media entries no slide/layout reaches (slide deletion and
+ * background replacement never pruned the map, so it accumulates orphans).
+ * Pure: returns a new map plus the pruned ids; the input show is untouched.
+ * Returns the original map reference when nothing was pruned.
+ */
+export function pruneShowMedia(show: Show | undefined | null): { media: Show["media"]; pruned: string[] } {
+    const media = show?.media
+    if (!show || !media || typeof media !== "object") return { media: media ?? ({} as Show["media"]), pruned: [] }
+    const reachable = collectReachableMediaIds(show)
+    const pruned = Object.keys(media).filter((id) => !reachable.has(id))
+    if (!pruned.length) return { media, pruned: [] }
+    const next: Record<string, Media> = {}
+    for (const [id, entry] of Object.entries(media)) {
+        if (reachable.has(id)) next[id] = entry
+    }
+    return { media: next as Show["media"], pruned }
 }
 
 export interface ProjectCollectorContext extends ShowCollectorContext {
@@ -165,10 +244,18 @@ function collectFromProjectRef(into: Set<string>, ref: ProjectShowRef, showsById
         return
     }
     // otherwise the ref itself may be a direct media item
-    if (ref.type && DIRECT_MEDIA_TYPES.has(ref.type)) {
-        addPath(into, ref.id)
-        return
-    }
+    addPath(into, projectRefDirectPath(ref))
+}
+
+/**
+ * The media path when a project ref is a DIRECT media item (id IS the path),
+ * or "" when it is a show ref / divider / anything else. Used by delete
+ * attribution, which reports show refs as containment, not ownership.
+ */
+export function projectRefDirectPath(ref: ProjectShowRef | undefined | null): string {
+    if (!ref) return ""
+    if (ref.type && DIRECT_MEDIA_TYPES.has(ref.type)) return typeof ref.id === "string" ? ref.id : ""
     // typeless / unknown refs: include when the id is path-like (defensive)
-    if (!ref.type) addPath(into, ref.id)
+    if (!ref.type && isCacheableMediaPath(ref.id)) return ref.id
+    return ""
 }

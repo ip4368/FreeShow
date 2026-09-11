@@ -93,6 +93,14 @@ export const mainResponses: MainResponses = {
     // satisfy MainResponses' exhaustive channel mapping.
     [Main.RESTORE_UPLOAD]: () => ({ finished: false, error: "not supported on desktop" }),
     [Main.BACKUP_DOWNLOAD]: () => new Uint8Array(),
+    // server trash is remote-only (routed to the server before reaching Electron main)
+    [Main.TRASH_FILES]: () => ({ trashed: [], failed: [], paths: [] }),
+    [Main.TRASH_RESTORE]: () => ({ restored: [], failed: [], paths: [] }),
+    [Main.TRASH_DELETE]: () => ({ deleted: [], failed: [], paths: [] }),
+    [Main.TRASH_EMPTY]: () => ({ deleted: [], paths: [] }),
+    [Main.TRASH_LIST]: () => ({ entries: [], totalSize: 0, swept: [] }),
+    [Main.MEDIA_USAGE]: () => ({ usage: {}, missing: [], summary: { files: 0, usedFiles: 0 } }),
+    [Main.MEDIA_LIBRARY_CHANGED]: () => ({ kind: "expired" as const, ids: [] }),
     [Main.IMPORT]: (data) => startImport(data),
     [Main.IMPORT_FILES]: (data) => importFiles(data),
     [Main.BIBLE]: (data) => loadScripture(data),

@@ -9,6 +9,8 @@
     import { AudioAnalyser } from "../../../audio/audioAnalyser"
     import { requestMain } from "../../../IPC/main"
     import { audioChannelsData, currentWindow, media, outputs, playerVideos, playingVideos, special, videosData, videosTime, volume } from "../../../stores"
+    import { isRemoteMedia } from "../../../utils/mediaGateway"
+    import { resolveProbePath } from "../../../utils/remoteMediaCache"
     import { destroy, receive, send } from "../../../utils/request"
     import { videoExtensions } from "../../../values/extensions"
     import BmdStream from "../../drawer/live/BMDStream.svelte"
@@ -185,8 +187,11 @@
         const ext = getExtension(filePath)
         if (!videoExtensions.includes(ext)) return
 
+        // Remote library files live on the server: read ReplayGain from the
+        // persistent local cache copy when available, otherwise skip (multiplier 1).
         try {
-            const metadata = await requestMain(Main.READ_AUDIO_METADATA, { filePath })
+            const probePath = isRemoteMedia() ? await resolveProbePath(filePath).catch(() => null) : filePath
+            const metadata = probePath ? await requestMain(Main.READ_AUDIO_METADATA, { filePath: probePath }) : null
             if (metadata?.replayGainMultiplier) {
                 replayGainMultiplier = metadata.replayGainMultiplier
             }

@@ -8,6 +8,8 @@ import { checkNextAfterMedia } from "../components/helpers/showActions"
 import { requestMain, sendMain } from "../IPC/main"
 import { activePlaylist, audioChannelsData, dictionary, media, outLocked, playingAudio, playingAudioPaths, special, volume } from "../stores"
 import { addToMediaFolder } from "../utils/cloudSync"
+import { isRemoteMedia } from "../utils/mediaGateway"
+import { resolveProbePath } from "../utils/remoteMediaCache"
 import { AudioAnalyser } from "./audioAnalyser"
 import { AudioAnalyserMerger } from "./audioAnalyserMerger"
 import { clearAudio, clearing, fadeInAudio, fadeOutAudio } from "./audioFading"
@@ -123,7 +125,10 @@ export class AudioPlayer {
 
         let replayGainMultiplier = 1
         try {
-            const audioMetadata = await requestMain(Main.READ_AUDIO_METADATA, { filePath: path })
+            // Remote library files live on the server: read ReplayGain from the
+            // persistent local cache copy when available, otherwise skip (multiplier 1).
+            const probePath = isRemoteMedia() ? await resolveProbePath(path).catch(() => null) : path
+            const audioMetadata = probePath ? await requestMain(Main.READ_AUDIO_METADATA, { filePath: probePath }) : null
             if (audioMetadata?.replayGainMultiplier) {
                 replayGainMultiplier = audioMetadata.replayGainMultiplier
             }

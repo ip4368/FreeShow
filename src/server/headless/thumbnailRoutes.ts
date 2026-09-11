@@ -20,6 +20,7 @@ import { promisify } from "util"
 import { getFfmpegPath } from "../../shared/media/ffmpeg"
 import { httpAuth } from "./auth"
 import { getDataFolderPath, resolveInSandbox } from "./data/dataPaths"
+import { pipeFile } from "./mediaRoutes"
 
 const execFileAsync = promisify(execFile)
 
@@ -92,7 +93,7 @@ export function registerThumbnailRoutes(app: Express) {
         // neither an image sharp can decode nor a video ffmpeg can read -> serve the original
         if (!isImage && !isVideo) {
             res.setHeader("Cache-Control", "public, max-age=86400")
-            return void fs.createReadStream(filePath).pipe(res)
+            return void pipeFile(req, res, filePath)
         }
 
         const cachePath = path.join(cacheDir(), `${cacheKey(filePath, stat.mtimeMs, size)}.webp`)
@@ -103,7 +104,7 @@ export function registerThumbnailRoutes(app: Express) {
 
         // only trust a non-empty cache entry (a 0-byte file would mean a partial/failed write)
         try {
-            if (fs.statSync(cachePath).size > 0) return void fs.createReadStream(cachePath).pipe(res)
+            if (fs.statSync(cachePath).size > 0) return void pipeFile(req, res, cachePath)
         } catch {
             // no cache entry yet
         }
@@ -117,7 +118,7 @@ export function registerThumbnailRoutes(app: Express) {
             if (!buffer) {
                 res.setHeader("Content-Type", "application/octet-stream")
                 res.setHeader("Cache-Control", "public, max-age=86400")
-                return void fs.createReadStream(filePath).pipe(res)
+                return void pipeFile(req, res, filePath)
             }
 
             // write atomically (tmp + rename) so a concurrent request never streams a
@@ -139,7 +140,7 @@ export function registerThumbnailRoutes(app: Express) {
             console.error("Thumbnail generation failed:", filePath, err)
             // fall back to the original so the client still shows something
             res.setHeader("Content-Type", "application/octet-stream")
-            return void fs.createReadStream(filePath).pipe(res)
+            return void pipeFile(req, res, filePath)
         }
     })
 }

@@ -124,6 +124,11 @@ export interface MainSendPayloads {
     // FFmpeg
     [Main.FFMPEG_CHECK]: undefined
     [Main.FFMPEG_DOWNLOAD]: undefined
+    // Remote-media cache (LOCAL only)
+    [Main.MEDIA_CACHE_GET]: { path: string }
+    [Main.MEDIA_CACHE_PREFETCH]: { paths: string[]; serverUrl: string; token?: string; maxBytes?: number }
+    [Main.MEDIA_CACHE_STATUS]: undefined
+    [Main.MEDIA_CACHE_CLEAR]: undefined
 }
 
 export interface MainReturnPayloads {
@@ -227,6 +232,11 @@ export interface MainReturnPayloads {
     // FFmpeg
     [Main.FFMPEG_CHECK]: { installed: boolean; path?: string }
     [Main.FFMPEG_DOWNLOAD]: Promise<{ success: boolean; error?: string }>
+    // Remote-media cache (LOCAL only)
+    [Main.MEDIA_CACHE_GET]: { path: string; localPath: string | null; cached: boolean } | null
+    [Main.MEDIA_CACHE_PREFETCH]: Promise<{ requested: number; downloaded: number; skipped: number; failed: { path: string; reason: string }[]; bytes: number; evicted: string[] }>
+    [Main.MEDIA_CACHE_STATUS]: { files: number; bytes: number; dir: string }
+    [Main.MEDIA_CACHE_CLEAR]: { clearedFiles: number; freedBytes: number }
 }
 
 ///////////

@@ -87,6 +87,7 @@ import {
 import { setupCloudSync } from "../utils/cloudSync"
 import { newToast } from "../utils/common"
 import { confirmCustom } from "../utils/popup"
+import { isCachedLocalPath } from "../utils/remoteMediaCache"
 import { initializeClosing, saveComplete } from "../utils/save"
 import { invalidateSearchIndex } from "../utils/searchFast"
 import { updateSettings, updateSyncedSettings, updateThemeValues } from "../utils/updateSettings"
@@ -217,7 +218,14 @@ export const mainResponses: MainResponses = {
         newToast("settings.restore_finished")
     },
     [ToMain.RECENTLY_ADDED_FILES]: (data) => updateRecentlyAddedFiles(data.paths),
-    [Main.MEDIA_TRACKS]: (data) => setMediaTracks(data),
+    // NOTE: hybrid subtitle probes request with the cache-local path, so the echoed
+    // reply lands here too — ignore it (VideoShow stores tracks under the remote
+    // key itself). Letting cache-local absolute paths into $media would leak them
+    // into the synced store.
+    [Main.MEDIA_TRACKS]: (data) => {
+        if (data?.path && isCachedLocalPath(data.path)) return
+        setMediaTracks(data)
+    },
     [ToMain.API_TRIGGER2]: (data) => triggerAction(data),
     [ToMain.PRESENTATION_STATE]: (data) => presentationData.set(data),
     // TOP BAR

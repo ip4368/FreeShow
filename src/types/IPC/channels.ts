@@ -160,7 +160,13 @@ export enum Main {
     SPOTIFY_COMMAND = "SPOTIFY_COMMAND",
     // FFmpeg Download
     FFMPEG_CHECK = "FFMPEG_CHECK",
-    FFMPEG_DOWNLOAD = "FFMPEG_DOWNLOAD"
+    FFMPEG_DOWNLOAD = "FFMPEG_DOWNLOAD",
+    // Remote-media cache (hybrid desktop: LOCAL only — this machine's disk cache
+    // of the server's library media; see src/shared/media/mediaCacheCore.ts)
+    MEDIA_CACHE_GET = "MEDIA_CACHE_GET",
+    MEDIA_CACHE_PREFETCH = "MEDIA_CACHE_PREFETCH",
+    MEDIA_CACHE_STATUS = "MEDIA_CACHE_STATUS",
+    MEDIA_CACHE_CLEAR = "MEDIA_CACHE_CLEAR"
 }
 
 export enum ToMain {

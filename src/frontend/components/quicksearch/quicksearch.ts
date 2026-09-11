@@ -664,9 +664,9 @@ const settings = [
         id: "general",
         name: "settings.general",
         icon: "general",
-        aliases: ["settings.language", "settings.use24hClock", "settings.disable_labels", "settings.default_project_name", "settings.startup_projects_list", "settings.auto_output", "settings.hide_cursor_in_output", "settings.clear_media_when_finished", "settings.capitalize_words", "settings.transparent_slides", "settings.full_colors", "settings.slide_number_keys", "settings.auto_shortcut_first_letter"]
+        aliases: ["settings.language", "settings.use24hClock", "settings.disable_labels", "settings.full_colors", "settings.slide_number_keys", "settings.auto_shortcut_first_letter"]
     },
-    { id: "display_settings", name: "settings.display_settings", icon: "display_settings", aliases: ["settings.active_style", "settings.output_screen", "settings.always_on_top", "NDI®", "-Livestream", "-Stage", "-HDMI"] },
+    { id: "display_settings", name: "settings.display_settings", icon: "display_settings", aliases: ["settings.active_style", "settings.output_screen", "settings.always_on_top", "NDI®", "OMT", "WebRTC", "RTMP", "-Livestream", "-Stage", "-HDMI"] },
     {
         id: "styles",
         name: "settings.styles",
@@ -832,7 +832,7 @@ function getFaq() {
 const showActions = [
     // { id: "verse", name: "new.slide", icon: "add", data: { globalGroup: { group: "", color: null, globalGroup: "verse", settings: {}, notes: "", items: [] } } },
     { id: "slide", name: "new.slide", icon: "add", data: { menuClick: "newSlide" }, aliases: ["-Add", "-Add slide"] },
-    { id: "layout", name: "show.new_layout", icon: "add" },
+    { id: "layout", name: "show.new_arrangement", icon: "add" },
 
     { id: "groups", name: "tools.groups", icon: "groups", data: { toolsTab: "groups" } },
     // { id: "media", name: "tools.media", icon: "media", data: { toolsTab: "media" } },

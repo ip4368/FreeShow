@@ -1,14 +1,15 @@
 <script lang="ts">
     import type { AccessType, Profile } from "../../../../types/Main"
-    import { SettingsTabs } from "../../../../types/Tabs"
-    import { actions, actionTags, activeProfile, categories, folders, groups, overlayCategories, profiles, selectedProfile, stageShows, templateCategories, timerTags, variableTags } from "../../../stores"
+    import { actions, actionTags, activePopup, activeProfile, categories, folders, groups, overlayCategories, popupData, profiles, selectedProfile, stageShows, templateCategories, timerTags, variableTags } from "../../../stores"
     import { translateText } from "../../../utils/language"
     import { encodePassword } from "../../../utils/profile"
     import { customIconsColors } from "../../../values/customIcons"
+    import { settingsTabs } from "../../../values/tabs"
     import { clone, keysToID, sortByName } from "../../helpers/array"
     import { history } from "../../helpers/history"
     import Icon from "../../helpers/Icon.svelte"
     import InputRow from "../../input/InputRow.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
     import MaterialDropdown from "../../inputs/MaterialDropdown.svelte"
     import MaterialMultiButtons from "../../inputs/MaterialMultiButtons.svelte"
     import MaterialTextInput from "../../inputs/MaterialTextInput.svelte"
@@ -149,8 +150,7 @@
     $: groupsAccess = currentProfile.access.groups || {}
 
     // "display_settings" (can change position still), "connection" (can use still)
-    const tabs: SettingsTabs[] = ["general", "display_settings", "styles", "connection", "files", "profiles", "theme", "other"]
-    $: settingsList = tabs.map((id) => ({ id, name: `settings.${id}`, icon: id }))
+    $: settingsList = settingsTabs.map((id) => ({ id, name: `settings.${id}`, icon: id }))
     $: settingsAccess = currentProfile.access.settings || {}
 
     ///
@@ -200,6 +200,11 @@
     let actionOptions = Object.entries($actions)
         .map(([id, a]) => ({ id, name: a.name }))
         .sort((a, b) => a.name?.localeCompare(b.name))
+
+    function editAction() {
+        popupData.set({ id: currentAction })
+        activePopup.set("action")
+    }
 </script>
 
 {#if !profileId || !profilesList.length}
@@ -229,5 +234,10 @@
     {/each}
 
     <!-- profile action -->
-    <MaterialDropdown label="midi.start_action" options={actionOptions.map((a) => ({ label: a.name, value: a.id }))} value={currentAction} style="margin-top: 20px;" on:change={(e) => updateProfile("action", e.detail)} allowEmpty />
+    <InputRow style="margin-top: 20px;">
+        <MaterialDropdown label="midi.start_action" options={actionOptions.map((a) => ({ label: a.name, value: a.id }))} value={currentAction} on:change={(e) => updateProfile("action", e.detail)} allowEmpty />
+        {#if currentAction && $actions[currentAction]}
+            <MaterialButton title="titlebar.edit" icon="edit" on:click={editAction} />
+        {/if}
+    </InputRow>
 {/if}

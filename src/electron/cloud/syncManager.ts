@@ -311,11 +311,9 @@ export async function syncData(data: { id: SyncProviderId; churchId: string; tea
             // replace local file if cloud is newer or new device
             if (cloudIsNewer) {
                 // try to set store directly first, otherwise move the file
-                const cloudContent = await readFileAsync(cloudPath)
-                const parsedData = safeParseJSON(cloudContent)
-                if (parsedData) {
-                    await safeStoreSet(localStore, parsedData, id)
-                } else {
+                if (cloudFileData) {
+                    await safeStoreSet(localStore, cloudFileData, id)
+                } else if (!(file as any).isTemp) {
                     await moveFileAsync(cloudPath, localPath)
                 }
 
@@ -455,16 +453,22 @@ export async function syncData(data: { id: SyncProviderId; churchId: string; tea
 
     const uploadResult = await uploadLocalData()
 
-    if (!DEBUG_MODE && !process.env.VITEST) {
+    const willRunBackup = !DEBUG_MODE && !process.env.VITEST
+    if (willRunBackup) {
         // silently backup in the background, this is skipped when the program is being closed
         setTimeout(async () => {
-            await uploadBackupData()
-            await deleteFolderAsync(EXTRACT_LOCATION)
-            console.log("Backup sync completed!")
+            try {
+                await uploadBackupData()
+            } catch (err) {
+                console.error("Backup sync error:", err)
+            } finally {
+                await deleteFolderAsync(EXTRACT_LOCATION)
+                console.log("Backup sync completed!")
+            }
         }, 1000)
     }
 
-    return await finish(uploadResult.success, uploadResult.error)
+    return await finish(uploadResult.success, uploadResult.error, willRunBackup)
 
     async function uploadLocalData(): Promise<{ success: boolean; error?: string }> {
         let success = false
@@ -481,32 +485,43 @@ export async function syncData(data: { id: SyncProviderId; churchId: string; tea
 
     // if cloud backup is non existent or older than a week
     async function uploadBackupData() {
-        console.log("Syncing backup data")
-        const backupPath = await provider!.getBackup(data.churchId, data.teamId, EXTRACT_LOCATION)
-        if (!backupPath) return await upload()
+        try {
+            console.log("Syncing backup data")
+            const backupPath = await provider!.getBackup(data.churchId, data.teamId, EXTRACT_LOCATION)
 
-        const oneWeek = ONE_HOUR * 24 * 7
-        const now = Date.now()
-        const stats = await getFileStatsAsync(backupPath)
-        if (!stats) return await upload()
+            // if no cloud backup exists, upload the newest local zip
+            if (!backupPath) return await upload()
 
-        const age = now - stats.mtime.getTime()
-        if (age > oneWeek) return await upload()
+            const oneWeek = ONE_HOUR * 24 * 7
+            const now = Date.now()
 
-        return false
+            // return if no cloud backup is older than a week
+            const stats = await getFileStatsAsync(backupPath)
+            if (stats && now - stats.mtime.getTime() < oneWeek) return false
 
-        async function upload() {
-            const cloudZipsPath = getDataFolderPath("cloud")
-            const zipFiles = await getFilesSortedByDate(cloudZipsPath)
-            const backupZipPath = zipFiles[0]?.path
-            if (!backupZipPath) return false
+            return await upload()
 
-            return await provider!.uploadBackup(data.teamId, backupZipPath)
+            async function upload() {
+                const cloudZipsPath = getDataFolderPath("cloud")
+                const zipFiles = await getFilesSortedByDate(cloudZipsPath)
+
+                // find the newest local zip that is at least a week old
+                const newestWeekOldZip = zipFiles.find((file) => now - file.ctime >= oneWeek)
+
+                // upload the newest week old zip, or the second newest zip, or the current zip
+                const backupZipPath = newestWeekOldZip?.path || zipFiles[1]?.path || zipFiles[0]?.path
+                if (!backupZipPath) return false
+
+                return await provider!.uploadBackup(data.teamId, backupZipPath)
+            }
+        } catch (err) {
+            console.error("Error in uploadBackupData:", err)
+            return false
         }
     }
 
-    async function finish(success = true, error?: string) {
-        if (!DEBUG_MODE) await deleteFolderAsync(EXTRACT_LOCATION)
+    async function finish(success = true, error?: string, skipCleanup = false) {
+        if (!DEBUG_MODE && !skipCleanup) await deleteFolderAsync(EXTRACT_LOCATION)
         console.log("Sync completed!")
         isNewDevice = false
         return { success, error, changedFiles }
@@ -620,17 +635,18 @@ async function getFilesSortedByDate(folderPath: string) {
 // or any more than two weeks old, but keep the two newest zips
 const ONE_HOUR = 1000 * 60 * 60
 async function deleteUnusedZips(folderPath: string, excludeZip: string) {
-    const zipFiles = (await getFilesSortedByDate(folderPath)).filter((a) => a.path !== excludeZip) // .filter((file) => file.path.endsWith(".zip"))
+    const zipFiles = (await getFilesSortedByDate(folderPath)).filter((a) => a.path !== excludeZip)
 
     const now = Date.now()
     for (let i = 0; i < zipFiles.length; i++) {
         const file = zipFiles[i]
         const age = now - file.ctime
 
-        if (i < 2) continue // keep two newest regardless
+        // keep two newest regardless
+        if (i < 2) continue
 
-        // less than an hour old OR more than two weeks old
-        if (age < ONE_HOUR || age > ONE_HOUR * 24 * 14) {
+        // delete if more than two weeks old
+        if (age > ONE_HOUR * 24 * 14) {
             deleteFile(file.path)
         }
     }

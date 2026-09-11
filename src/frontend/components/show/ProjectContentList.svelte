@@ -2,7 +2,7 @@
     import { createEventDispatcher, onDestroy, onMount } from "svelte"
     import { fade } from "svelte/transition"
     import type { ProjectShowRef, Tree } from "../../../types/Projects"
-    import { ShowType } from "../../../types/Show"
+    import type { ShowType } from "../../../types/Show"
     import { addProjectItem, addToProject, updateRecentlyAddedFiles } from "../../converters/project"
     import { actions, activeFocus, activePopup, activeProject, activeShow, contextActive, drawer, drawerTabsData, editingProjectTemplate, focusMode, fullColors, playerVideos, popupData, projects, projectTemplates, projectView, recentFiles, selected, shows, special } from "../../stores"
     import { triggerFunction } from "../../utils/common"
@@ -79,6 +79,7 @@
     function getContextMenuId(type: ShowType | undefined) {
         if ((type || "show") === "show") return "show"
         if (type === "video" || type === "image") return "media"
+        if (type === "show_placeholder") return isTemplate ? "show_placeholder_template" : "show_placeholder"
         return type
     }
 
@@ -255,6 +256,9 @@
             e.stopPropagation()
         }
     }
+
+    $: activeIndex = $focusMode ? $activeFocus.index : $activeShow?.index
+    $: activeId = $focusMode ? $activeFocus.id : $activeShow?.id
 </script>
 
 <svelte:window on:mousedown={mousedown} on:keydown|capture={handleKeydown} />
@@ -265,7 +269,9 @@
         <DropArea id="project" selectChildren hoverTimeout={150} let:fileOver file>
             {#if projectItemsList.length}
                 {#each splittedProjectsList as splittedItemsList}
-                    <div class="listSection" style="--border-color: {splittedItemsList.color};">
+                    {@const isCollapsed = currentProject?.sectionsCollapsed && splittedItemsList.items?.[0]?.type === "section" && !splittedItemsList.items?.some((a) => (activeIndex === undefined ? a.id === activeId : a.index === activeIndex))}
+
+                    <div class="listSection" style="{splittedItemsList.color ? `--border-color: ${splittedItemsList.color};` : ''}{isCollapsed && splittedItemsList.items.length > 1 ? 'border-bottom: 3px solid var(--primary-lighter);' : ''}">
                         {#each splittedItemsList.items as show, i}
                             {@const index = show.index}
                             {@const triggerAction = show.data?.settings?.triggerAction || $special.sectionTriggerAction}
@@ -277,7 +283,9 @@
                             {@const isActive = show.type === "section" ? ($focusMode ? $activeFocus.id === show.id : $activeShow?.id === show.id) : false}
                             {@const isLocked = show.type === "section" && currentProject?.sectionsLocked}
 
-                            {#if show.type === "DIVIDER"}
+                            {#if isCollapsed && i > 0}
+                                <!-- hide collapsed items (except for the section itself) -->
+                            {:else if show.type === "DIVIDER"}
                                 <div style="border-top: 1px solid var(--primary-lighter);margin: 5px 0;"></div>
                             {:else}
                                 <SelectElem id="show" dropAbove={isFirst} triggerOnHover data={{ ...show, name: show.name || removeExtension(getFileName(show.id)), index }} {fileOver} borders={show.type === "show_placeholder" ? "all" : "edges"} trigger="column" draggable={!isLocked} selectable={!isLocked}>
@@ -324,6 +332,10 @@
                                             {#if isActive}
                                                 <span class="arrow">
                                                     <Icon id="next" white />
+                                                </span>
+                                            {:else if isCollapsed && splittedItemsList.items.length > 1}
+                                                <span class="arrow">
+                                                    <Icon id="add" size={0.8} white />
                                                 </span>
                                             {/if}
                                         </MaterialButton>

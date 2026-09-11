@@ -9,6 +9,14 @@ export interface Shows {
     [key: string]: Show
 }
 
+export interface CustomFont {
+    type?: "local" | "google"
+    // font family name (used by CSS)
+    name: string
+    // local font file path (empty path currently means Google Fonts)
+    path?: string
+}
+
 export interface Show {
     name: string
     id?: string // this id should not be stored (but often used in the program as a temporary value)
@@ -26,7 +34,7 @@ export interface Show {
         // resolution?: Resolution
         template: null | ID
         customAction?: string // special custom trigger
-        customFonts?: { name: string; path: string }[]
+        customFonts?: CustomFont[]
     }
     timestamps: {
         created: number
@@ -235,9 +243,13 @@ export interface Timer {
 
 export interface Clock {
     type: "digital" | "analog" | "custom"
-    dateFormat: "none"
+    dateFormat: string
     showTime?: boolean
     seconds?: boolean
+
+    // custom:
+    customFormat?: string
+    offsetDays?: number
 }
 
 export interface DynamicEvent {
@@ -334,6 +346,7 @@ export interface TimelineAction {
         id?: string // slide/action/show
         path?: string // audio
         index?: number // slide
+        line?: number // slide line
         layoutId?: string // show
         triggers?: string[] // action
         actionValues?: any // action
@@ -640,4 +653,4 @@ export type ID = string
 export type ItemType = "text" | "media" | "camera" | "timer" | "clock" | "button" | "events" | "weather" | "variable" | "web" | "icon" | "slide_tracker" | "visualizer" | "captions" | "metronome" | "current_output" | "chart" | "table" // "shape" | "video"
 export type ShowType = "DIVIDER" | "show" | "image" | "video" | "audio" | "player" | "section" | "overlay" | "effect" | "pdf" | "ppt" | "screen" | "ndi" | "camera" | "folder" | "show_placeholder" // "private"
 export type TransitionType = "none" | "blur" | "fade" | "crossfade" | "fly" | "scale" | "slide" | "spin"
-export type MediaType = "media" | "video" | "image" | "effect" | "screen" | "ndi" | "camera" | "player" | "audio"
+export type MediaType = "media" | "video" | "image" | "effect" | "screen" | "ndi" | "omt" | "camera" | "player" | "audio"

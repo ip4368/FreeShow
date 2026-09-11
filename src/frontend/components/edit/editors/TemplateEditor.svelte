@@ -48,10 +48,10 @@
             let styles = getStyles(item.style)
             let textStyles = ""
 
-            Object.entries(newStyles).forEach(([key, value]) => (styles[key] = value.toString()))
+            const itemNewStyles = (newStyles as any).__multiPositions ? (newStyles as any).__multiPositions[id] || {} : newStyles
+            Object.entries(itemNewStyles).forEach(([key, value]) => (styles[key] = (value as any).toString()))
             Object.entries(styles).forEach((obj) => (textStyles += obj[0] + ":" + obj[1] + ";"))
 
-            // TODO: move multiple!
             values.push(textStyles)
         })
 
@@ -96,8 +96,12 @@
         {/if}
     </div>
 
-    <FloatingInputs>
+    <FloatingInputs side="left">
+        <MaterialZoom columns={zoom} min={0.2} max={4} defaultValue={1} addValue={0.1} on:change={updateZoom} on:origin={(e) => (zoomOrigin = e.detail)} />
+
         {#if styleOverrides > 0}
+            <div class="divider"></div>
+
             <MaterialButton
                 icon="text"
                 on:click={() => {
@@ -108,11 +112,7 @@
                 {translateText("popup.template_style_overrides")}
                 <span style="font-size: 0.8em;opacity: 0.5;">{styleOverrides}</span>
             </MaterialButton>
-
-            <div class="divider"></div>
         {/if}
-
-        <MaterialZoom columns={zoom} min={0.2} max={4} defaultValue={1} addValue={0.1} on:change={updateZoom} on:origin={(e) => (zoomOrigin = e.detail)} />
     </FloatingInputs>
 </div>
 

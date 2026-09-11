@@ -1,6 +1,8 @@
 <script lang="ts">
+    import { onDestroy } from "svelte"
     import { outputs } from "../../stores"
     import { throttle } from "../../utils/common"
+    import { stopResizing } from "../../utils/cursor"
     import { DEFAULT_BOUNDS, getActiveOutputs, getOutputResolution, getStageResolution } from "../helpers/output"
     import { getRadius, moveBox, resizeBox, rotateBox } from "./textbox"
 
@@ -16,13 +18,14 @@
         if (!mouse?.item || mouse.rightClick) return
 
         let notTextBox: boolean = mouse.item.type !== undefined && mouse.item.type !== "text"
-        if (!notTextBox && !e.ctrlKey && !e.metaKey && !mouse.e.target.closest(".line") && !mouse.e.target.closest(".square") && !mouse.e.target.closest(".rotate") && !mouse.e.target.closest(".radius")) return
+        let isShift = e.shiftKey || mouse.e.shiftKey
+        let control = mouse.e.ctrlKey || mouse.e.metaKey
+        if (!notTextBox && !control && !isShift && !mouse.e.target.closest(".line") && !mouse.e.target.closest(".square") && !mouse.e.target.closest(".rotate") && !mouse.e.target.closest(".radius")) return
 
         e?.preventDefault()
         styles = {}
 
-        let control = mouse.e.ctrlKey || mouse.e.metaKey
-        let moveCondition: boolean = mouse.e.target.closest(".line") || ((!mouse.e.target.closest(".edit") || notTextBox || mouse.e.altKey) && !mouse.e.target.closest(".square")) || (control && !mouse.e.target.closest(".square")) || mouse.e.buttons === 4
+        let moveCondition: boolean = mouse.e.target.closest(".line") || ((!mouse.e.target.closest(".edit") || notTextBox || mouse.e.altKey || isShift) && !mouse.e.target.closest(".square")) || (control && !mouse.e.target.closest(".square")) || mouse.e.buttons === 4
 
         let keepAspectRatio = e.shiftKey
         // WIP square option currently not working well (also custom SVG icons can be any ratio)
@@ -47,16 +50,19 @@
             }
         }
 
-        // remove all lines that are too close to each other (with same orientation)
-        const MAX_DISTANCE = 12 / ratio
-        lines = lines.filter((line, index, arr) => {
-            for (let i = 0; i < arr.length; i++) {
-                if (i === index) continue
-                if (line[0][0] !== arr[i][0][0] && line[0] !== arr[i][0]) continue
-                if (Math.abs(line[1] - arr[i][1]) <= MAX_DISTANCE) return false
+        // deduplicate lines that have the exact same position
+        const uniqueLines: [string, number][] = []
+        for (const line of lines) {
+            const lineType = line[0][0] // "x" or "y"
+            const duplicateIndex = uniqueLines.findIndex((existing) => existing[0][0] === lineType && Math.abs(existing[1] - line[1]) < 0.5)
+            if (duplicateIndex === -1) {
+                uniqueLines.push(line)
+            } else if (line[0].endsWith("c") && !uniqueLines[duplicateIndex][0].endsWith("c")) {
+                // Prefer center line marker over standard line marker if at the same position
+                uniqueLines[duplicateIndex] = line
             }
-            return true
-        })
+        }
+        lines = uniqueLines
 
         // show max 3 lines of each orientation at once
         const MAX_LINES = 3
@@ -100,16 +106,27 @@
     }
 
     function mouseup() {
+        stopResizing()
         mouse = null
         lines = []
         newStyles = {}
     }
+
+    onDestroy(() => {
+        stopResizing()
+    })
 </script>
 
 <svelte:window on:mousemove={mousemove} on:mouseup={mouseup} />
 
 {#each lines as line}
-    <div class="line {line[0]}" style="{line[0].includes('x') ? 'left' : 'top'}: {line[1]}px;transform:translate{line[0].includes('x') ? 'X' : 'Y'}(-50%);" />
+    {@const isX = line[0].includes("x")}
+    {@const isCenter = line[0].endsWith("c")}
+    {@const thickness = (isCenter ? 2.5 : 1.25) / ratio}
+    <div
+        class="line {line[0]}"
+        style="{isX ? `left: ${line[1]}px; width: ${thickness}px; height: 100%;` : `top: ${line[1]}px; height: ${thickness}px; width: 100%;`}transform: translate{isX ? 'X' : 'Y'}(-50%);"
+    />
 {/each}
 
 <style>
@@ -119,21 +136,5 @@
         left: 0; /* stylelint-disable-line csstools/use-logical */
         z-index: 1000;
         background-color: var(--secondary);
-    }
-    .line.x {
-        width: 2px;
-        height: 100%;
-    }
-    .line.xc {
-        width: 5px;
-        height: 100%;
-    }
-    .line.y {
-        width: 100%;
-        height: 2px;
-    }
-    .line.yc {
-        width: 100%;
-        height: 5px;
     }
 </style>

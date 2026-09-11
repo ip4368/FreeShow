@@ -1,4 +1,4 @@
-import type { ComponentType } from "svelte"
+import { onDestroy, type ComponentType } from "svelte"
 import { get } from "svelte/store"
 import type { Popups } from "../../types/Main"
 import About from "../components/main/popups/About.svelte"
@@ -7,6 +7,8 @@ import ActionHistory from "../components/main/popups/ActionHistory.svelte"
 import Alert from "../components/main/popups/Alert.svelte"
 import AspectRatio from "../components/main/popups/AspectRatio.svelte"
 import AudioStream from "../components/main/popups/AudioStream.svelte"
+import AudioEffect from "../components/main/popups/AudioEffect.svelte"
+import AddAudioEffect from "../components/main/popups/AddAudioEffect.svelte"
 import CategoryAction from "../components/main/popups/CategoryAction.svelte"
 import ChangeIcon from "../components/main/popups/ChangeIcon.svelte"
 import ChangeOutputValues from "../components/main/popups/ChangeOutputValues.svelte"
@@ -44,6 +46,7 @@ import Export from "../components/main/popups/export/Export.svelte"
 import FindReplace from "../components/main/popups/FindReplace.svelte"
 import History from "../components/main/popups/History.svelte"
 import Import from "../components/main/popups/Import.svelte"
+import ImportCalendar from "../components/main/popups/ImportCalendar.svelte"
 import ImportScripture from "../components/main/popups/ImportScripture.svelte"
 import Initialize from "../components/main/popups/Initialize.svelte"
 import InteractionInput from "../components/main/popups/InteractionInput.svelte"
@@ -86,7 +89,10 @@ import Transition from "../components/main/popups/Transition.svelte"
 import Unsaved from "../components/main/popups/Unsaved.svelte"
 import UpdateManager from "../components/main/popups/UpdateManager.svelte"
 import Variable from "../components/main/popups/Variable.svelte"
+import NodeOptions from "../components/main/popups/NodeOptions.svelte"
 import { activePopup, popupData } from "../stores"
+import AiModelManager from "../ai/components/popups/AiModelManager.svelte"
+import ManageFonts from "../components/main/popups/ManageFonts.svelte"
 
 export const popups: { [key in Popups]: ComponentType } = {
     initialize: Initialize,
@@ -104,6 +110,7 @@ export const popups: { [key in Popups]: ComponentType } = {
     delete_duplicated_shows: DeleteDuplicatedShows,
     icon: ChangeIcon,
     manage_groups: ManageGroups,
+    manage_fonts: ManageFonts,
     manage_icons: ManageIcons,
     manage_colors: ManageColors,
     manage_metadata: ManageMetadata,
@@ -121,6 +128,8 @@ export const popups: { [key in Popups]: ComponentType } = {
     variable: Variable,
     interaction_input: InteractionInput,
     audio_stream: AudioStream,
+    audio_effect: AudioEffect,
+    add_audio_effect: AddAudioEffect,
     now_playing: NowPlaying,
     aspect_ratio: AspectRatio,
     max_lines: MaxLines,
@@ -128,6 +137,7 @@ export const popups: { [key in Popups]: ComponentType } = {
     media_fit: MediaFit,
     metadata_display: MetadataDisplay,
     import_scripture: ImportScripture,
+    import_calendar: ImportCalendar,
     create_collection: CreateCollection,
     edit_event: EditEvent,
     edit_chart: EditChart,
@@ -173,7 +183,9 @@ export const popups: { [key in Popups]: ComponentType } = {
     cleaning_utility: CleaningUtility,
     pco_picker: PcoServicePicker,
     sync_folders: SyncFolders,
-    remote_folder: RemoteFolderPicker
+    remote_folder: RemoteFolderPicker,
+    node_options: NodeOptions,
+    ai_model_manager: AiModelManager
 }
 
 export function waitForPopupData(popupId: Popups): Promise<any> {
@@ -186,7 +198,7 @@ export function waitForPopupData(popupId: Popups): Promise<any> {
         }, 300)
 
         unsubscribe = popupData.subscribe((a) => {
-            if (a.id !== popupId) return
+            if (!a || a.id !== popupId) return
             activePopup.set(null)
             finish(a.value)
         })
@@ -216,4 +228,30 @@ export async function promptCustom(prompt: string, inputType: string = "text", m
     popupData.set({ prompt, inputType, message })
     const data = (await waitForPopupData("confirm")) || ""
     return data as string
+}
+
+// Enter to submit
+
+let activeSubmit: (() => void) | null = null
+
+export function registerPopupSubmit(submit: () => void) {
+    activeSubmit = submit
+
+    onDestroy(() => {
+        if (activeSubmit === submit) activeSubmit = null
+    })
+}
+
+export function triggerPopupSubmit(e?: KeyboardEvent): boolean {
+    if (!activeSubmit) return false
+
+    const target = e?.target as HTMLElement | null
+    if (target?.closest("textarea, [contenteditable='true'], button, [role], .editItem")) return false
+
+    activeSubmit()
+    return true
+}
+
+export function clearPopupSubmit() {
+    activeSubmit = null
 }

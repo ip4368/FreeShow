@@ -5,7 +5,7 @@
     import type { ClickEvent, FileFolder } from "../../../../types/Main"
     import { requestMain } from "../../../IPC/main"
     import { addProjectItem } from "../../../converters/project"
-    import { activeDrawerTab, activeEdit, activeFocus, activeMediaTagFilter, activePopup, activeShow, audioFolders, capabilities, cloudSyncData, drawerTabsData, focusMode, labelsDisabled, media, mediaFolders, mediaOptions, outLocked, outputs, popupData, providerConnections, selectAllMedia, selected, sorted, special, styles } from "../../../stores"
+    import { activeDrawerTab, activeEdit, activeFocus, activeMediaTagFilter, activePopup, activeShow, audioFolders, capabilities, cloudSyncData, drawerTabsData, focusMode, labelsDisabled, media, mediaFolders, mediaOptions, openedMediaFolders, outLocked, outputs, popupData, providerConnections, selectAllMedia, selected, sorted, special, styles } from "../../../stores"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import { clone, keysToID, sortFilenames } from "../../helpers/array"
@@ -23,6 +23,7 @@
     import BMDStreams from "../live/BMDStreams.svelte"
     import Cameras from "../live/Cameras.svelte"
     import NDIStreams from "../live/NDIStreams.svelte"
+    import OMTStreams from "../live/OMTStreams.svelte"
     import Screens from "../live/Screens.svelte"
     import Windows from "../live/Windows.svelte"
     import PlayerVideos from "../player/PlayerVideos.svelte"
@@ -44,6 +45,12 @@
     let prevActiveSubTab = active
     $: if (active !== prevActiveSubTab) {
         if (active !== "online") setView("all")
+        if (prevActiveSubTab) {
+            openedMediaFolders.update((a) => {
+                delete a[prevActiveSubTab!]
+                return a
+            })
+        }
         prevActiveSubTab = active
     }
 
@@ -53,8 +60,28 @@
     let specialTabs = ["online", "inputs"]
     $: isProviderSection = contentProviders.some((p) => p.providerId === active)
     $: notFolders = ["all", ...specialTabs, ...contentProviders.map((p) => p.providerId)]
-    $: rootPath = notFolders.includes(active || "") ? "" : active !== null ? $mediaFolders[active]?.path || "" : ""
-    $: path = notFolders.includes(active || "") ? "" : rootPath
+    $: isLocalFolder = !!(active && $mediaFolders[active])
+    $: rootPath = isLocalFolder ? $mediaFolders[active!]?.path || "" : ""
+
+    let path = ""
+    let prevActiveFolder = ""
+    $: if (active !== prevActiveFolder || rootPath) {
+        prevActiveFolder = active || ""
+        if (!isLocalFolder) {
+            path = ""
+        } else {
+            const saved = active ? $openedMediaFolders[active] : ""
+            path = saved && rootPath && saved.startsWith(rootPath) ? saved : rootPath
+        }
+    }
+
+    $: if (isLocalFolder && active) {
+        openedMediaFolders.update((a) => {
+            if (path && rootPath && path !== rootPath && path.startsWith(rootPath)) a[active!] = path
+            else if (a[active!]) delete a[active!]
+            return a
+        })
+    }
 
     $: folderName = active === "all" ? "category.all" : active === "favourites" ? "category.favourites" : rootPath === path ? (active !== null ? $mediaFolders[active]?.name || "" : "") : splitPath(path).name
 
@@ -515,6 +542,10 @@
                 <p>NDI</p>
             </MaterialButton>
         {/if}
+        <MaterialButton style="flex: 1;" isActive={inputsTab === "omt"} on:click={() => setSubSubTab("omt")}>
+            <Icon size={1.2} id="omt" white />
+            <p>OMT</p>
+        </MaterialButton>
         {#if $capabilities.blackmagic}
             <MaterialButton style="flex: 1;" isActive={inputsTab === "blackmagic"} on:click={() => setSubSubTab("blackmagic")}>
                 <Icon size={1.2} id="blackmagic" white />
@@ -563,7 +594,7 @@
                 <PlayerVideos active={onlineTab} {searchValue} />
             </div>
         {:else if active === "online" && onlineTab === "canva"}
-            <Canva />
+            <Canva {searchValue} />
         {:else if active === "inputs"}
             <div class="gridgap">
                 {#if inputsTab === "cameras"}
@@ -574,7 +605,7 @@
 
                             if ($outLocked || e.ctrlKey || e.metaKey) return
                             if (currentOutput?.out?.background?.id === cam.id) clearBackground()
-                            else setOutput("background", { name: cam.name, id: cam.id, cameraGroup: cam.cameraGroup, type: "camera" })
+                            else setOutput("background", { name: cam.name, id: cam.id, cameraGroup: cam.group || cam.cameraGroup, type: "camera" })
                         }}
                     />
                 {:else if inputsTab === "screens"}
@@ -583,6 +614,8 @@
                     <Windows bind:streams {searchValue} />
                 {:else if inputsTab === "ndi"}
                     <NDIStreams />
+                {:else if inputsTab === "omt"}
+                    <OMTStreams />
                 {:else if inputsTab === "blackmagic"}
                     <BMDStreams />
                 {/if}
@@ -747,7 +780,7 @@
         display: flex;
         position: relative;
         background-color: var(--primary-darkest);
-        align-items: center;
+        align-items: stretch;
     }
 
     .tabs :global(button) {

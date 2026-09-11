@@ -6,8 +6,11 @@ import type { SyncProviderId } from "../../electron/cloud/syncManager"
 import type { ContentFile, ContentLibraryCategory, ContentProviderId, MediaLicense } from "../../electron/contentProviders/base/types"
 import type { PCOFolderTreeNode } from "../../electron/contentProviders/planningCenter/request"
 import type { _store } from "../../electron/data/store"
+import type { EncoderDetection } from "../../electron/streaming/encoderDetection"
 import type { TimecodeMode } from "../../electron/timecode/timecode"
-import type { ErrorLog, FileFolder, LessonsData, LyricSearchResult, MainFilePaths, Media, OS, SpotifyState, Subtitle } from "../Main"
+import type { AIProviderId, AiSetupOptions, EngineStatus } from "../ai/Ai"
+import type { SttEngineOptions } from "../ai/AiSettings"
+import type { ErrorLog, FileFolder, LessonsData, LyricSearchResult, MainFilePaths, Media, MediaCodecInfo, OS, SpotifyState, Subtitle } from "../Main"
 import type { Output } from "../Output"
 import type { Folders, Projects } from "../Projects"
 import type { Dictionary, Resolution, Themes } from "../Settings"
@@ -124,11 +127,22 @@ export interface MainSendPayloads {
     // FFmpeg
     [Main.FFMPEG_CHECK]: undefined
     [Main.FFMPEG_DOWNLOAD]: undefined
+    // Streaming encoder
+    [Main.ENCODER_DETECT]: { force?: boolean } | undefined
+    [Main.SET_RTMP_ENCODER]: { outputId: string; encoder: string }
     // Remote-media cache (LOCAL only)
     [Main.MEDIA_CACHE_GET]: { path: string }
     [Main.MEDIA_CACHE_PREFETCH]: { paths: string[]; serverUrl: string; token?: string; maxBytes?: number }
     [Main.MEDIA_CACHE_STATUS]: undefined
     [Main.MEDIA_CACHE_CLEAR]: undefined
+    // AI
+    [Main.AI_GET_MODELS]: { providerId: AIProviderId }
+    [Main.AI_LISTEN_START]: { engine: string; engineOptions: SttEngineOptions }
+    [Main.AI_AUDIO_DATA]: { buffer: Uint8Array }
+    [Main.AI_GET_STATUS]: { engineId?: string; modelId?: string; customPath?: string } | undefined
+    [Main.AI_SETUP]: AiSetupOptions
+    [Main.AI_SET_KEY]: { providerId: AIProviderId; key: string }
+    [Main.AI_LLM_COMPLETE]: { providerId: AIProviderId; model: string; options: { systemPrompt?: string; prompt: string; jsonSchema?: any; temperature?: number; maxTokens?: number } }
 }
 
 export interface MainReturnPayloads {
@@ -177,12 +191,13 @@ export interface MainReturnPayloads {
     [Main.GET_EMPTY_SHOWS]: Promise<{ id: string; name: string }[] | undefined>
     [Main.FULL_SHOWS_LIST]: string[]
     [Main.GET_SCREENS]: Promise<{ name: string; id: string }[]>
+    [Main.GET_GRAPHICS_DEVICES]: Promise<{ value: string; label: string }[]>
     [Main.GET_WINDOWS]: Promise<{ name: string; id: string }[]>
     [Main.DOES_MEDIA_EXIST]: Promise<{ path: string; exists: boolean; creationTime?: number }>
     [Main.GET_THUMBNAIL]: Promise<{ output: string; input: string; size: number }>
     // [Main.PDF_TO_IMAGE]: Promise<string[]>
     [Main.READ_EXIF]: Promise<{ id: string; exif: ExifData | undefined }>
-    [Main.MEDIA_CODEC]: Promise<{ path: string; codecs: string[]; mimeType: string; mimeCodec: string }>
+    [Main.MEDIA_CODEC]: Promise<MediaCodecInfo>
     [Main.MEDIA_TRACKS]: Promise<{ path: string; tracks: Subtitle[] }>
     [Main.MEDIA_IS_DOWNLOADED]: Promise<{ path: string; buffer: Buffer | null; protectedUrl?: string | null; isDownloading?: boolean } | null>
     // [Main.MEDIA_BASE64]: { id: string; content: string }[]
@@ -230,13 +245,22 @@ export interface MainReturnPayloads {
     [Main.SPOTIFY_GET_STATE]: Promise<SpotifyState | null>
     [Main.SPOTIFY_COMMAND]: Promise<boolean>
     // FFmpeg
-    [Main.FFMPEG_CHECK]: { installed: boolean; path?: string }
+    [Main.FFMPEG_CHECK]: Promise<{ installed: boolean; path?: string }>
     [Main.FFMPEG_DOWNLOAD]: Promise<{ success: boolean; error?: string }>
+    // Streaming encoder
+    [Main.ENCODER_DETECT]: Promise<EncoderDetection>
     // Remote-media cache (LOCAL only)
     [Main.MEDIA_CACHE_GET]: { path: string; localPath: string | null; cached: boolean } | null
     [Main.MEDIA_CACHE_PREFETCH]: Promise<{ requested: number; downloaded: number; skipped: number; failed: { path: string; reason: string }[]; bytes: number; evicted: string[] }>
     [Main.MEDIA_CACHE_STATUS]: { files: number; bytes: number; dir: string }
     [Main.MEDIA_CACHE_CLEAR]: { clearedFiles: number; freedBytes: number }
+    // AI
+    [Main.AI_GET_BIN]: Promise<{ path: string; name: string; size: number }[]>
+    [Main.AI_LISTEN_START]: Promise<{ started: boolean; error?: string }>
+    [Main.AI_GET_STATUS]: Promise<{ [key: string]: EngineStatus }>
+    [Main.AI_SETUP]: Promise<boolean>
+    [Main.AI_SET_KEY]: Promise<boolean>
+    [Main.AI_LLM_COMPLETE]: Promise<{ text: string; error?: string; code?: string; retryAfter?: number }>
 }
 
 ///////////

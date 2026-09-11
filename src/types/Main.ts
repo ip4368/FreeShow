@@ -18,6 +18,7 @@ export interface Config {
     bounds: Rectangle
     dataPath: string | null
     disableHardwareAcceleration: boolean | null
+    graphicsDevice: string | null
     autoErrorReporting?: boolean
     mediaFolderPath?: string
 }
@@ -107,6 +108,7 @@ export type SelectIds =
     | "effect"
     | "screen"
     | "ndi"
+    | "omt"
     | "camera"
     | "microphone"
     | "player"
@@ -122,8 +124,10 @@ export type SelectIds =
     | "style"
     | "output"
     | "profile"
+    | "audio_channel"
     | "tag"
     | "bible_book"
+    | "calendar"
 
 export interface Selected {
     id: null | SelectIds
@@ -212,11 +216,20 @@ export interface MediaStyle {
     licenseExpiresAt?: number // unix ms; content provider license is valid while Date.now() < licenseExpiresAt
     pingbackUrl?: string // URL for sending pingback after playback
     cropping?: Partial<Cropping>
+    style?: string // used to transfer styles from main item to cropped part (like border radius)
 
     ignoreLayer?: boolean // foreground background type
 }
 
 export type AudioType = "music" | "effect"
+
+// media codec
+export interface MediaCodecInfo {
+    path: string
+    codecs: string[]
+    mimeType: string
+    mimeCodec: string
+}
 
 // subtitles/captions
 export interface Subtitle {
@@ -396,6 +409,7 @@ export type Popups =
     | "delete_duplicated_shows"
     | "icon"
     | "manage_groups"
+    | "manage_fonts"
     | "manage_icons"
     | "manage_colors"
     | "manage_metadata"
@@ -411,6 +425,8 @@ export type Popups =
     | "variable"
     | "interaction_input"
     | "audio_stream"
+    | "audio_effect"
+    | "add_audio_effect"
     | "now_playing"
     | "aspect_ratio"
     | "max_lines"
@@ -418,6 +434,7 @@ export type Popups =
     | "media_fit"
     | "metadata_display"
     | "import_scripture"
+    | "import_calendar"
     | "create_collection"
     | "edit_event"
     | "edit_chart"
@@ -466,6 +483,8 @@ export type Popups =
     | "pco_picker"
     | "sync_folders"
     | "remote_folder"
+    | "node_options"
+    | "ai_model_manager"
 
 export type DefaultProjectNames = "date" | "today" | "sunday" | "week" | "custom" | "blank"
 

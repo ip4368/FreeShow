@@ -1,16 +1,15 @@
 <script lang="ts">
     import type { SettingsTabs } from "../../../types/Tabs"
     import { activePage, activeProfile, capabilities, focusMode, profiles, settingsTab } from "../../stores"
+    import { settingsTabs } from "../../values/tabs"
     import { clone } from "../helpers/array"
     import Icon from "../helpers/Icon.svelte"
     import T from "../helpers/T.svelte"
     import Button from "../inputs/Button.svelte"
 
-    const tabs: SettingsTabs[] = ["general", "display_settings", "styles", "connection", "files", "profiles", "theme", "other"]
-
     // hide tabs whose features this client doesn't have (e.g. output/display settings on a
     // remote client, which can't own output windows or enumerate this machine's screens)
-    $: availableTabs = clone(tabs).filter((tabId) => (tabId === "display_settings" ? $capabilities.outputWindows : true))
+    $: availableTabs = clone(settingsTabs).filter((tabId) => (tabId === "display_settings" ? $capabilities.outputWindows : true))
 
     let activeTabs: SettingsTabs[] = []
     $: profile = $profiles[$activeProfile || ""]

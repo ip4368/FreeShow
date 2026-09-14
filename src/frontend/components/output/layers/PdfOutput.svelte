@@ -4,6 +4,7 @@
     import OutputTransition from "../transitions/OutputTransition.svelte"
     import { onDestroy } from "svelte"
     import { encodeFilePath } from "../../helpers/media"
+    import { ensureLocalMedia } from "../../../utils/remoteMediaCache"
 
     export let slide
     export let currentStyle
@@ -36,7 +37,9 @@
 
         if (loadedPath !== currentPath || !loadedDoc) {
             loadingTask?.destroy()
-            loadingTask = getDocument(encodeFilePath(currentPath))
+            // hybrid desktops play a cached local copy when the project was prefetched
+            const localPath = await ensureLocalMedia(currentPath).catch(() => null)
+            loadingTask = getDocument(encodeFilePath(localPath || currentPath))
             loadedDoc = await loadingTask.promise
             loadedPath = currentPath
         }

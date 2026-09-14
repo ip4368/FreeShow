@@ -10,6 +10,11 @@
     import Center from "../../system/Center.svelte"
 
     export let path = ""
+    // path of the file the presentation app actually opened (a cache-local copy on
+    // hybrid clients) — used for the echoed id comparison and the window title match
+    export let presentationId = ""
+
+    $: matchId = presentationId || path
 
     // get window
 
@@ -21,7 +26,7 @@
         // this is needed if the window is being opened thile the presentation mode has already been active
         findWindowTimeout = setTimeout(
             () => requestMain(Main.GET_WINDOWS, undefined, receiveWindows),
-            $presentationData?.id === path ? 1800 : 0 // 800 should be enough if the window is opened, but it might be closed
+            $presentationData?.id === matchId ? 1800 : 0 // 800 should be enough if the window is opened, but it might be closed
         )
     }
 
@@ -40,7 +45,8 @@
             }
         }
 
-        let fileName = getFileName(path)
+        // the app window title shows the OPENED file name (cache-local on hybrid)
+        let fileName = getFileName(matchId)
         let appName = ($special.presentationApp || "PowerPoint").split(" ")[0]
 
         let windows = a.filter((a) => a.name.includes(appName) && a.name.includes(fileName) && !a.name.includes(fileName + " - " + appName))

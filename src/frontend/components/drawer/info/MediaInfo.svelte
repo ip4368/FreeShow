@@ -2,6 +2,8 @@
     import { Main } from "../../../../types/IPC/Main"
     import { requestMain, sendMain } from "../../../IPC/main"
     import { activeRecording, activeShow, cloudSyncData, drawerTabsData, special } from "../../../stores"
+    import { isRemoteMedia } from "../../../utils/mediaGateway"
+    import { resolveProbePath } from "../../../utils/remoteMediaCache"
     import { videoExtensions } from "../../../values/extensions"
     import { formatBytes } from "../../helpers/bytes"
     import { getExtension, getFileName, getMediaInfo, removeExtension } from "../../helpers/media"
@@ -25,12 +27,20 @@
         mediaData = {}
         codecInfo = {}
 
-        requestMain(Main.FILE_INFO, $activeShow?.id, (data) => {
+        requestFileInfo($activeShow.id)
+        getCodecInfo()
+    }
+
+    // Remote library files live on the server: stat the persistent local cache copy
+    // when available, otherwise skip (probing the server path locally fails).
+    async function requestFileInfo(id: string) {
+        const probePath = isRemoteMedia() ? await resolveProbePath(id).catch(() => null) : id
+        if (!probePath) return
+        requestMain(Main.FILE_INFO, probePath, (data) => {
             if (!data) return
             mediaData = { ...data.stat, extension: data.extension }
-            if (!name) name = removeExtension(getFileName(data.path))
+            if (!name) name = removeExtension(getFileName(id))
         })
-        getCodecInfo()
     }
 
     let codecInfo: { codecs?: string[]; mimeType?: string; mimeCodec?: string } = {}

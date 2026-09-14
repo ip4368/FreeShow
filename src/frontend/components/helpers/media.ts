@@ -12,6 +12,7 @@ import { audioFolders, cachePath, loadedMediaThumbnails, media, mediaFolders, sp
 import { addToMediaFolder } from "../../utils/cloudSync"
 import { isMainWindow, newToast, wait, waitUntilValueIsDefined } from "../../utils/common"
 import { getServerMediaUrl, getServerThumbnailUrl, isGatewayUrl, isRemoteMedia } from "../../utils/mediaGateway"
+import { ensureLocalMedia, isCachedLocalPath, registerReplacedPathsInvalidator, resolveLocalMedia, resolveProbePath } from "../../utils/remoteMediaCache"
 import { audioExtensions, imageExtensions, mediaExtensions, presentationExtensions, videoExtensions } from "../../values/extensions"
 import type { API_media, API_slide_thumbnail } from "../actions/api"
 import { clone } from "./array"
@@ -78,9 +79,20 @@ export function encodeFilePath(path: string): string {
     if (typeof path !== "string") return ""
     if (!isLocalFile(path)) return path
 
-    // remote clients (web / hybrid desktop) fetch library media from the server gateway
-    if (isRemoteMedia()) return getServerMediaUrl(path)
+    // remote clients (web / hybrid desktop) fetch library media from the server gateway —
+    // but a hybrid desktop first tries its persistent local cache, so prefetched shows
+    // play from disk even on a low-bandwidth link (see remoteMediaCache.ts)
+    if (isRemoteMedia()) {
+        if (isCachedLocalPath(path)) return encodeLocalFilePath(path)
+        const cached = resolveLocalMedia(path)
+        if (cached) return encodeLocalFilePath(cached)
+        return getServerMediaUrl(path)
+    }
 
+    return encodeLocalFilePath(path)
+}
+
+function encodeLocalFilePath(path: string): string {
     if (path.startsWith("file://")) path = path.replace("file://", "")
     try {
         if (path.match(/%[0-9a-fA-F]{2}/)) path = decodeURIComponent(path)
@@ -185,6 +197,13 @@ function clearMediaCaches() {
 audioFolders.subscribe(clearMediaCaches)
 mediaFolders.subscribe(clearMediaCaches)
 
+// Drop resolved entries pointing at cache-local files when mappings are evicted
+// or cleared, so playback re-resolves (gateway) instead of serving deleted files.
+registerReplacedPathsInvalidator(() => {
+    for (const [key, value] of replacedPaths) {
+        if (isCachedLocalPath(value.path) || (value.thumbnail && isCachedLocalPath(value.thumbnail))) replacedPaths.delete(key)
+    }
+})
 export async function getMedia(path: string, size: number = mediaSize.drawerSize) {
     if (typeof path !== "string" || !path) return null
     if (locatedMediaCache.get(path) === null) return null
@@ -216,7 +235,11 @@ export async function getMedia(path: string, size: number = mediaSize.drawerSize
         // Remote clients: the library media lives on the SERVER, so this machine can't
         // locate it on disk. Skip the local lookup and use the path as-is — it resolves
         // through the media gateway when rendered (see mediaGateway.ts).
+        // Hybrid desktops first try the persistent local cache (prefetched per project).
         if (isRemoteMedia()) {
+            if (isCachedLocalPath(path)) return finish(path, (await loadThumbnail(path, size)) || path)
+            const cached = await ensureLocalMedia(path).catch(() => null)
+            if (cached) return finish(cached, (await loadThumbnail(cached, size)) || cached)
             return finish(path, path)
         }
 
@@ -273,8 +296,8 @@ export async function getMediaCached(path: string, size: number = mediaSize.draw
 
 export async function locateMediaFile(path: string) {
     if (!path || typeof path !== "string") return null
-    if (isRemoteMedia()) return { path, hasChanged: false }
-    if (!isLocalFile(path)) return { path, hasChanged: false }
+    // remote clients: media lives on the server, so this machine can't locate it on disk
+    if (!isLocalFile(path) || isRemoteMedia()) return { path, hasChanged: false }
     if (locatedMediaCache.has(path)) return locatedMediaCache.get(path)!
 
     let folders: string[] = []
@@ -290,6 +313,7 @@ export async function locateMediaFile(path: string) {
 
 export async function doesMediaExist(path: string, noCache = false) {
     if (!path || typeof path !== "string") return false
+    // remote clients can't stat the server's files locally; the gateway serves them
     if (isRemoteMedia()) return true
     if (!isLocalFile(path)) return true
     if (!noCache && mediaExistsCache.has(path)) return mediaExistsCache.get(path)!
@@ -323,8 +347,14 @@ export async function getMediaInfo(path: string): Promise<{ codecs: string[]; mi
     const cachedInfo = get(media)[path]?.info
     if (cachedInfo?.codecs?.length) return cachedInfo
 
+    // Remote library files live on the server: probe the persistent local cache copy
+    // when available, otherwise skip (the video is treated as supported). Probing the
+    // server path on the local disk only produced ENOENT spam from the mp4box prober.
+    const probePath = isRemoteMedia() ? await resolveProbePath(path).catch(() => null) : path
+    if (!probePath) return info
+
     try {
-        info = (await requestMain(Main.MEDIA_CODEC, { path })) || null
+        info = (await requestMain(Main.MEDIA_CODEC, { path: probePath })) || null
     } catch (err) {
         return info
     }
@@ -452,9 +482,10 @@ export async function loadThumbnail(input: string, size: number = mediaSize.draw
     if (!isLocalFile(input)) return input
 
     // Remote clients: thumbnails can't be generated locally for server media (the local
-    // GET_THUMBNAIL would fail and callers treat "" as a load failure). Serve the original
-    // through the gateway instead — server-side thumbnail generation is a future optimization.
-    if (isRemoteMedia()) return getServerThumbnailUrl(input, size)
+    // GET_THUMBNAIL would fail and callers treat "" as a load failure). Serve through
+    // the server's thumbnail gateway instead — except for files already in the local
+    // media cache, which are real local files and use the normal pipeline below.
+    if (isRemoteMedia() && !isCachedLocalPath(input)) return getServerThumbnailUrl(input, size)
 
     // already encoded (this could cause an infinite loop)
     if (input.includes("freeshow-cache") || input.includes("media-cache")) return input
@@ -474,7 +505,8 @@ export function getThumbnailPath(input: string, size: number) {
     if (!isLocalFile(input)) return input
 
     // remote clients have no local thumbnail cache; the server generates/caches thumbnails
-    if (isRemoteMedia()) return getServerThumbnailUrl(input, size)
+    // (files already in the local media cache use the normal pipeline below)
+    if (isRemoteMedia() && !isCachedLocalPath(input)) return getServerThumbnailUrl(input, size)
 
     // already encoded
     if (input.includes("freeshow-cache") || input.includes("media-cache")) return input

@@ -9,7 +9,9 @@
     import { translateText } from "../../utils/language"
     import Icon from "../helpers/Icon.svelte"
     import T from "../helpers/T.svelte"
-    import { enableSubtitle, encodeFilePath, getExtension, getFileName, getMediaLayerType, removeExtension } from "../helpers/media"
+    import { enableSubtitle, encodeFilePath, getExtension, getFileName, getMediaLayerType, removeExtension, setMediaTracks } from "../helpers/media"
+    import { isRemoteMedia } from "../../utils/mediaGateway"
+    import { resolveProbePath } from "../../utils/remoteMediaCache"
     import { getFirstActiveOutput, setOutput } from "../helpers/output"
     import { joinTime, secondsToTime } from "../helpers/time"
     import FloatingInputs from "../input/FloatingInputs.svelte"
@@ -40,7 +42,27 @@
     $: subtitleData = $media[mediaPath] || {}
     $: tracks = subtitleData.tracks || []
     $: subtitle = subtitleData.subtitle || ""
-    $: if (type !== "player" && mediaPath && subtitleData.tracks === undefined) sendMain(Main.MEDIA_TRACKS, { path: mediaPath })
+    $: if (type !== "player" && mediaPath && subtitleData.tracks === undefined) loadTracks(mediaPath)
+    // Remote library files live on the server: read embedded subtitles from the
+    // persistent local cache copy when available, otherwise skip (probing the
+    // server path on the local disk only produced ENOENT spam from the prober).
+    // One attempt per path: the reactive caller re-fires on any $media change
+    // while tracks are undefined, which would otherwise re-probe in a loop.
+    let tracksAttemptedFor = ""
+    async function loadTracks(p: string) {
+        if (p === tracksAttemptedFor) return
+        tracksAttemptedFor = p
+        if (!isRemoteMedia()) {
+            sendMain(Main.MEDIA_TRACKS, { path: p })
+            return
+        }
+        const probePath = await resolveProbePath(p).catch(() => null)
+        if (!probePath) return
+        const res = await requestMain(Main.MEDIA_TRACKS, { path: probePath }).catch(() => null)
+        // store under the REMOTE key (the main process echoes the probed local path,
+        // which would neither match this lookup nor stop this reactive statement)
+        setMediaTracks({ path: p, tracks: res?.tracks || [] })
+    }
 
     export let mediaStyle: MediaStyle = {}
 

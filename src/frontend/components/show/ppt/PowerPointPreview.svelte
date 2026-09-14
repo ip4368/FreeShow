@@ -5,6 +5,7 @@
     import { requestMain, sendMain } from "../../../IPC/main"
     import { activeShow, capabilities, os, outLocked, outputs, presentationApps, presentationData, special } from "../../../stores"
     import { translateText } from "../../../utils/language"
+    import { ensureLocalMedia } from "../../../utils/remoteMediaCache"
     import Icon from "../../helpers/Icon.svelte"
     import { getFileName, removeExtension } from "../../helpers/media"
     import { getActiveOutputs, getOutputContent, setOutput } from "../../helpers/output"
@@ -25,13 +26,17 @@
 
     let opening = false
     let retry = false
-    function newPresentation() {
-        if ($outLocked) return
+    // the path the presentation app was asked to open (a cached local copy on hybrid
+    // clients — the main process echoes this exact path back in presentationData.id)
+    let launchPath = ""
+    async function newPresentation() {
+        if ($outLocked || opening) return
 
         reset()
         opening = true
 
-        sendMain(Main.START_SLIDESHOW, { path: show.id, program: $special.presentationApp || "PowerPoint" })
+        launchPath = (await ensureLocalMedia(show.id).catch(() => null)) || show.id
+        sendMain(Main.START_SLIDESHOW, { path: launchPath, program: $special.presentationApp || "PowerPoint" })
         clearSlide()
 
         setTimeout(() => (opening ? (retry = true) : ""), 8000)
@@ -49,7 +54,7 @@
 
     $: outSlide = getOutputContent("", $outputs)
 
-    $: if (opening && $presentationData?.id === show.id) start()
+    $: if (opening && launchPath && ($presentationData?.id === launchPath || $presentationData?.id === show.id)) start()
     function start() {
         let name = show.name || removeExtension(getFileName(show.id))
         setOutput("slide", { type: "ppt", id: show.id, name, page: $presentationData.stat?.position - 1, pages: $presentationData.stat?.slides })
@@ -93,10 +98,10 @@
         </Center>
     {:else if outSlide?.id === show.id}
         <div class="fill">
-            <ScreenCapture path={show.id} />
+            <ScreenCapture path={show.id} presentationId={launchPath || show.id} />
         </div>
 
-        {#if $presentationData?.id === show.id && $presentationData?.stat?.slides}
+        {#if ($presentationData?.id === show.id || $presentationData?.id === launchPath) && $presentationData?.stat?.slides}
             <div class="info">
                 <Button on:click={restartPresentation} title={translateText("presentation_control.restart")}>
                     <Icon id="refresh" />

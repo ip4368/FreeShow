@@ -11,7 +11,7 @@ import upath from "upath"
 import { fileURLToPath } from "url"
 import { Main } from "../../types/IPC/Main"
 import { ToMain } from "../../types/IPC/ToMain"
-import type { FileFolder, MainFilePaths, MediaCodecInfo, Subtitle } from "../../types/Main"
+import type { FileFolder, MainFilePaths } from "../../types/Main"
 import type { Project } from "../../types/Projects"
 import type { Item, Show, TrimmedShows } from "../../types/Show"
 import { imageExtensions, mimeTypes, videoExtensions } from "../data/media"
@@ -646,145 +646,15 @@ export function readExifData({ id }: { id: string }): Promise<{ id: string; exif
     })
 }
 
-// GET MEDIA CODEC
-export async function getMediaCodec(data: { path: string }): Promise<MediaCodecInfo> {
-    const mimeType = getMimeType(data.path)
-    const emptyResult: MediaCodecInfo = { ...data, codecs: [], mimeType, mimeCodec: "" }
+// NOTE: media probing (getMediaCodec/getMediaTracks) lives in ../data/mediaProbe.ts —
+// kept Electron-free so the missing-file behavior is unit-tested.
 
-    return parseMp4File(data.path, emptyResult, (mp4boxfile, resolve) => {
-        mp4boxfile.onReady = (info: any) => {
-            const codecs = info?.tracks?.map((t: any) => t.codec).filter(Boolean) || []
-            if (!codecs.length) return resolve(emptyResult)
+export function getMimeType(filePath: string) {
+    if (typeof filePath !== "string") return ""
 
-            const mimeCodec = `${mimeType}; codecs="${codecs.join(", ")}"`
-            resolve({ ...data, codecs, mimeType, mimeCodec })
-        }
-    })
-}
-
-export function getMimeType(filePath: string): string {
-    if (!filePath || typeof filePath !== "string") return "application/octet-stream"
-
-    const ext = path.extname(filePath).toLowerCase().replace(/^\./, "")
-    return mimeTypes[ext] || "application/octet-stream"
-}
-
-// GET EMBEDDED SUBTITLES
-export async function getMediaTracks(data: { path: string }): Promise<{ path: string; tracks: Subtitle[] }> {
-    const DECODER = new TextDecoder("utf-8")
-    const emptyResult = { ...data, tracks: [] as Subtitle[] }
-
-    return parseMp4File(data.path, emptyResult, (mp4boxfile, resolve) => {
-        mp4boxfile.onReady = (info: any) => {
-            const subTracks = info?.tracks?.filter((t: any) => t?.type === "subtitles" || t?.type === "text") || []
-            if (!subTracks.length) return resolve(emptyResult)
-
-            const tracks: Subtitle[] = []
-            const pendingIds = new Set<number>(subTracks.map((t: any) => t.id))
-            const trackVttMap = new Map<number, { lines: string[]; index: number; language: string }>()
-
-            subTracks.forEach((track: any) => {
-                trackVttMap.set(track.id, { lines: ["WEBVTT\n"], index: 1, language: track.language || "und" })
-                mp4boxfile.setExtractionOptions(track.id, null, { nbSamples: track.nb_samples })
-            })
-
-            mp4boxfile.onSamples = (id: number, _user: any, samples: any[]) => {
-                if (!pendingIds.has(id)) return
-                const trackInfo = subTracks.find((t: any) => t.id === id)
-                const vttInfo = trackVttMap.get(id)
-
-                if (trackInfo && vttInfo) {
-                    const scale = trackInfo.timescale || 1
-
-                    for (const sample of samples) {
-                        const subtitleText = DECODER.decode(sample.data)
-                            .replace(/[^\x20-\x7E\r\n\t]+/g, "")
-                            .trim()
-                        if (!subtitleText) continue
-
-                        const start = formatTimestamp((sample.cts / scale) * 1000)
-                        const end = formatTimestamp(((sample.cts + sample.duration) / scale) * 1000)
-
-                        vttInfo.lines.push(`${vttInfo.index++}`, `${start} --> ${end}`, `${subtitleText}\n`)
-                    }
-
-                    if (vttInfo.lines.length > 1) {
-                        tracks.push({ lang: vttInfo.language.slice(0, 2), name: vttInfo.language, vtt: vttInfo.lines.join("\n"), embedded: true })
-                    }
-                }
-
-                pendingIds.delete(id)
-                if (pendingIds.size === 0) resolve({ ...data, tracks })
-            }
-
-            mp4boxfile.start()
-        }
-    })
-}
-
-function formatTimestamp(ms: number): string {
-    const pad = (n: number, z = 2) => Math.floor(n).toString().padStart(z, "0")
-    return `${pad(ms / 3600000)}:${pad((ms % 3600000) / 60000)}:${pad((ms % 60000) / 1000)}.${pad(ms % 1000, 3)}`
-}
-
-// MP4BOX HELPER
-const CHUNK_SIZE = 1024 * 1024 // Read in 1MB chunks
-function parseMp4File<T>(filePath: string, fallback: T, setupListeners: (mp4boxfile: any, resolve: (res: T) => void) => void): Promise<T> {
-    return new Promise((resolve) => {
-        if (!fs.existsSync(filePath)) return resolve(fallback)
-
-        const MP4Box = require("mp4box")
-
-        let fd: number | null = null
-        let settled = false
-
-        const cleanupAndResolve = (result: T) => {
-            if (settled) return
-            settled = true
-            if (fd !== null) {
-                try {
-                    fs.closeSync(fd)
-                } catch {}
-            }
-            resolve(result)
-        }
-
-        try {
-            const stats = fs.statSync(filePath)
-            fd = fs.openSync(filePath, "r")
-
-            const mp4boxfile = MP4Box.createFile()
-            mp4boxfile.onError = () => cleanupAndResolve(fallback)
-
-            setupListeners(mp4boxfile, cleanupAndResolve)
-
-            let offset = 0
-            const buffer = Buffer.allocUnsafe(CHUNK_SIZE)
-
-            while (offset < stats.size && !settled) {
-                const bytesRead = fs.readSync(fd, buffer, 0, CHUNK_SIZE, offset)
-                if (bytesRead === 0) break
-
-                const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + bytesRead) as ArrayBuffer & { fileStart?: number }
-                arrayBuffer.fileStart = offset
-                offset += bytesRead
-
-                // Safeguard against internal mp4box runtime errors
-                try {
-                    mp4boxfile.appendBuffer(arrayBuffer)
-                } catch {
-                    return cleanupAndResolve(fallback)
-                }
-            }
-
-            try {
-                mp4boxfile.flush()
-            } catch {}
-            if (!settled) cleanupAndResolve(fallback)
-        } catch {
-            cleanupAndResolve(fallback)
-        }
-    })
+    // const ext = filePath.split(".").pop()?.toLowerCase() || ""
+    const ext = path.extname(filePath).toLowerCase().slice(1)
+    return mimeTypes[ext] || ""
 }
 
 /// ///

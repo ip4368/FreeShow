@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onDestroy } from "svelte"
     import { fade } from "svelte/transition"
+    import { isSocketTransport } from "../../IPC/transport"
     import { activePage, activePopup, contextActive, contextData, currentWindow, dictionary, localeDirection, os, serverData, slideDeleteHighlight, special, spellcheck, theme, themes } from "../../stores"
     import { translateText } from "../../utils/language"
     import { closeContextMenu } from "../../utils/shortcuts"
@@ -59,6 +60,8 @@
         }
 
         activeMenu = [...(getContextMenu(id) || contextMenuLayouts.default)]
+        // server trash is remote-only (local clients manage files in the OS explorer)
+        if (!isSocketTransport()) activeMenu = activeMenu.filter((menuId) => menuId !== "delete_media_files")
         // show "Copy ID" button if API is enabled
         if ($serverData?.companion?.enabled && id) {
             const baseId = id.slice(1).split("_readonly")[0].split("_default")[0]

@@ -5,7 +5,7 @@
     import type { ClickEvent, FileFolder } from "../../../../types/Main"
     import { requestMain } from "../../../IPC/main"
     import { addProjectItem } from "../../../converters/project"
-    import { activeDrawerTab, activeEdit, activeFocus, activeMediaTagFilter, activePopup, activeShow, audioFolders, capabilities, cloudSyncData, drawerTabsData, focusMode, labelsDisabled, media, mediaFolders, mediaOptions, openedMediaFolders, outLocked, outputs, popupData, providerConnections, selectAllMedia, selected, sorted, special, styles } from "../../../stores"
+    import { activeDrawerTab, activeEdit, activeFocus, activeMediaTagFilter, activePopup, activeShow, audioFolders, capabilities, cloudSyncData, drawerTabsData, focusMode, labelsDisabled, media, mediaFolders, mediaLibraryVersion, mediaOptions, openedMediaFolders, outLocked, outputs, popupData, providerConnections, selectAllMedia, selected, sorted, special, styles } from "../../../stores"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import { clone, keysToID, sortFilenames } from "../../helpers/array"
@@ -13,6 +13,7 @@
     import { countFolderMediaItems, getExtension, getFileName, getMediaLayerType, getMediaStyle, getMediaType, isMediaExtension, removeExtension } from "../../helpers/media"
     import { isSocketTransport } from "../../../IPC/transport"
     import { uploadToServer } from "../../../utils/mediaGateway"
+    import { trashPathsWithConfirm } from "../../../utils/trash"
     import { getFirstActiveOutput, setOutput } from "../../helpers/output"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
@@ -33,6 +34,7 @@
     import Folder from "./Folder.svelte"
     import Media from "./MediaCard.svelte"
     import MediaGrid from "./MediaGrid.svelte"
+    import TrashBrowser from "./TrashBrowser.svelte"
     import { loadFromPixabay } from "./pixabay"
     import { loadFromUnsplash } from "./unsplash"
 
@@ -57,7 +59,7 @@
     // type File = { path: string; favourite: boolean; name: string; extension: string; audio: boolean; folder?: boolean; stat?: any }
     // let files: File[] = []
 
-    let specialTabs = ["online", "inputs"]
+    let specialTabs = ["online", "inputs", "trash"]
     $: isProviderSection = contentProviders.some((p) => p.providerId === active)
     $: notFolders = ["all", ...specialTabs, ...contentProviders.map((p) => p.providerId)]
     $: isLocalFolder = !!(active && $mediaFolders[active])
@@ -83,7 +85,7 @@
         })
     }
 
-    $: folderName = active === "all" ? "category.all" : active === "favourites" ? "category.favourites" : rootPath === path ? (active !== null ? $mediaFolders[active]?.name || "" : "") : splitPath(path).name
+    $: folderName = active === "all" ? "category.all" : active === "favourites" ? "category.favourites" : active === "trash" ? "category.trash" : rootPath === path ? (active !== null ? $mediaFolders[active]?.name || "" : "") : splitPath(path).name
 
     async function loadFilesAsync() {
         if ((onlineTab !== "pixabay" && onlineTab !== "unsplash") || activeView === "folder") return
@@ -167,6 +169,9 @@
             prevActive = active
 
             requestFiles(Object.values($mediaFolders).map((a) => a.path!))
+        } else if (active === "trash") {
+            // server trash renders from its own channel (TrashBrowser)
+            prevActive = active
         } else if (path?.length) {
             if (path === prevActive) return
             prevActive = path
@@ -215,6 +220,27 @@
         uploading = ""
         if (uploadInput) uploadInput.value = ""
         requestFiles(path, currentDepth)
+    }
+
+    // another client (or the expiry sweep) changed the server library: re-request this view
+    let lastLibVersion = 0
+    $: if ($mediaLibraryVersion.n > lastLibVersion) {
+        lastLibVersion = $mediaLibraryVersion.n
+        if (active !== "trash" && active !== "online" && active !== "inputs" && !isProviderSection) {
+            prevActive = ""
+            updateContent()
+        }
+    }
+
+    async function deleteCurrentFolder() {
+        if (!path) return
+        const result = await trashPathsWithConfirm([path])
+        // the folder is gone — step back to the drawer root (broadcast refreshes the rest)
+        if (result?.trashed.length) {
+            path = rootPath
+            prevActive = ""
+            updateContent()
+        }
     }
 
     let foldersList: FileFolder[] = []
@@ -321,7 +347,7 @@
 
     let filteredFiles: FileFolder[] = []
     function filterFiles() {
-        if (active === "online" || active === "inputs" || isProviderSection) return
+        if (active === "online" || active === "inputs" || active === "trash" || isProviderSection) return
 
         let localFilteredFiles: FileFolder[] = clone(filesList)
 
@@ -622,6 +648,8 @@
                     <BMDStreams />
                 {/if}
             </div>
+        {:else if active === "trash"}
+            <TrashBrowser kind="media" />
         {:else if searchedFiles.length}
             <div class="context #media" style="display: contents;">
                 {#key searchedFiles}
@@ -711,7 +739,7 @@
     {/if}
 
     <MaterialZoom hidden columns={$mediaOptions.columns} defaultValue={5} on:change={(e) => mediaOptions.set({ ...$mediaOptions, columns: e.detail })} />
-{:else if active === "inputs"}
+{:else if active === "inputs" || active === "trash"}
     <!-- nothing -->
 
     <MaterialZoom hidden columns={$mediaOptions.columns} defaultValue={5} on:change={(e) => mediaOptions.set({ ...$mediaOptions, columns: e.detail })} />
@@ -759,6 +787,13 @@
             <MaterialButton title="Upload files" disabled={!!uploading} on:click={() => uploadInput?.click()}>
                 <Icon id="upload" white />
                 {#if uploading}<span style="font-size: 0.8em;margin-inline-start: 6px;">{uploading}</span>{/if}
+            </MaterialButton>
+        {/if}
+
+        <!-- delete the currently viewed SERVER folder (moves to server trash) -->
+        {#if remoteLibrary && path && isLocalFolder}
+            <MaterialButton title="actions.delete_folder" on:click={deleteCurrentFolder}>
+                <Icon id="delete" white />
             </MaterialButton>
         {/if}
 

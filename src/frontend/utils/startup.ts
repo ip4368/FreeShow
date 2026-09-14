@@ -7,6 +7,7 @@ import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
 import { isSocketTransport } from "../IPC/transport"
 import { initCrdtClient } from "./crdt/crdtClient"
+import { initRemoteMediaCache, warmCacheDirPrefix } from "./remoteMediaCache"
 import { cameraManager } from "../media/cameraManager"
 import { activePopup, activeProfile, alertMessage, cachePath, capabilities, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, profiles, providerConnections, shows, special, version, windowState } from "../stores"
 import { startTracking } from "./analytics"
@@ -64,6 +65,8 @@ async function startupMain() {
     setupMainReceivers()
     // real-time co-editing bridge (web/remote clients only)
     if (isSocketTransport()) initCrdtClient()
+    // project-level media prefetch so shows play from local disk on slow links
+    if (isSocketTransport()) initRemoteMediaCache()
     getMainData()
 
     await wait(50)
@@ -187,6 +190,10 @@ async function getStoredData() {
 async function startupOutput() {
     setLanguage() // this is only needed for the context menu (and stage display)
     receive(OUTPUT, receiveOUTPUTasOUTPUT)
+
+    // output windows play cached files handed to them by the main window — learn the
+    // cache-dir prefix so those absolute paths aren't mistaken for server paths
+    if (isSocketTransport()) void warmCacheDirPrefix()
 
     // wait a bit on slow computers
     await wait(200)

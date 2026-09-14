@@ -79,10 +79,10 @@ export const REMOTE_MAIN_CHANNELS: ReadonlySet<string> = new Set([
     // split across both sides (see REMOTE_SAVE_KEYS / hybridTransport.ts) rather than
     // being routed wholesale here.
     //
-    // MEDIA FILES (future): media/audio referenced by the library live on the server.
-    // The MEDIA store above is only metadata; actual bytes need a server-served virtual
-    // filesystem (HTTP /media gateway) with local caching. Until that exists, library
-    // media won't resolve on a remote desktop client (text/overlays/templates do).
+    // MEDIA FILES: media/audio referenced by the library live on the server. The MEDIA
+    // store above is only metadata; the bytes are served by the HTTP /media gateway and
+    // cached persistently on this machine (MEDIA_CACHE_* channels, LOCAL only), so a
+    // low-bandwidth client plays from its own disk after a project-level prefetch.
 ])
 
 // keys of the batched SaveData that belong to the REMOTE (resource) save;

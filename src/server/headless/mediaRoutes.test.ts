@@ -75,6 +75,24 @@ describe("media gateway /media", () => {
     it("blocks an absolute path OUTSIDE the sandbox (403), even if it exists", async () => {
         expect((await fetch(url(outsidePng))).status).toBe(403)
     })
+
+    it("never serves Trash contents (403), even with a media extension", async () => {
+        fs.mkdirSync(path.join(tmpDir, "Trash", "some-id"), { recursive: true })
+        fs.writeFileSync(path.join(tmpDir, "Trash", "some-id", "doomed.png"), "TRASHED")
+        expect((await fetch(url("Trash/some-id/doomed.png"))).status).toBe(403)
+        expect((await fetch(url("Trash"))).status).toBe(403)
+    })
+
+    it("sends private no-cache + ETag and honors If-None-Match with 304", async () => {
+        const res = await fetch(url("pic.png"))
+        expect(res.status).toBe(200)
+        expect(res.headers.get("cache-control")).toBe("private, no-cache")
+        const etag = res.headers.get("etag")
+        expect(etag).toBeTruthy()
+
+        const cached = await fetch(url("pic.png"), { headers: { "If-None-Match": etag! } })
+        expect(cached.status).toBe(304)
+    })
 })
 
 describe("media upload /media/upload", () => {

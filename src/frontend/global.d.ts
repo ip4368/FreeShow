@@ -27,6 +27,7 @@ interface Window {
         getListeners: () => [string, number][]
         showFilePath: (file: File) => string
     }
+    electronAPI?: Window["api"]
     queryLocalFonts: () => Promise<FontData[]>
 }
 

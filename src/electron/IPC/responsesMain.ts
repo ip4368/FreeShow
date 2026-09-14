@@ -4,6 +4,9 @@ import { app, desktopCapturer, screen, shell, systemPreferences } from "electron
 import os from "os"
 import path from "path"
 import { getMainWindow, isProd, mainWindow, maximizeMain, setGlobalMenu } from ".."
+import { createPortableResponses } from "../../shared/ipc/createPortableResponses"
+import { ELECTRON_CAPABILITIES } from "../../shared/platform/capabilities"
+import type { Platform } from "../../shared/platform/Platform"
 import type { MainResponses } from "../../types/IPC/Main"
 import { Main } from "../../types/IPC/Main"
 import { ToMain } from "../../types/IPC/ToMain"
@@ -46,33 +49,37 @@ import { executeSpotifyCommand, getSpotifyState } from "../utils/spotify"
 import checkForUpdates from "../utils/updater"
 import { sendToMain } from "./main"
 
+const electronPlatform: Platform = {
+    id: "electron",
+    capabilities: ELECTRON_CAPABILITIES,
+    data: {
+        getStore: (id) => getStore(id as any),
+        getStoreValue,
+        setStoreValue,
+        save,
+        loadShow,
+        loadShows: () => loadShowsAsync(),
+        loadAllShows: getAllShows,
+        loadScripture,
+        readBiblesFolder,
+        getDataFolderRoot,
+        getPaths,
+        readFile,
+        readFolderContent
+    },
+    isDevelopment: () => !isProd,
+    getCachePath: getThumbnailFolderPath,
+    getVersion,
+    getOS,
+    getDeviceId: getMachineId,
+    getDeviceName,
+    getLocalIPs,
+    checkRamUsage
+}
+
 // no need to await Promise returns here
-export const mainResponses: MainResponses = {
-    // DEV
-    [Main.LOG]: (data) => console.info(data),
-    [Main.IS_DEV]: () => !isProd,
-    [Main.GET_CACHE_PATH]: () => getThumbnailFolderPath(),
-    // APP
-    [Main.VERSION]: () => getVersion(),
-    [Main.GET_OS]: () => getOS(),
-    [Main.DEVICE_ID]: () => getMachineId(),
-    [Main.GET_DEVICE_NAME]: () => getDeviceName(),
-    [Main.IP]: () => getLocalIPs(),
-    [Main.CHECK_RAM_USAGE]: () => checkRamUsage(),
-    // STORES
-    [Main.SETTINGS]: () => getStore("SETTINGS"),
-    [Main.SYNCED_SETTINGS]: () => getStore("SYNCED_SETTINGS"),
-    [Main.STAGE]: () => getStore("STAGE"),
-    [Main.PROJECTS]: () => getStore("PROJECTS"),
-    [Main.OVERLAYS]: () => getStore("OVERLAYS"),
-    [Main.TEMPLATES]: () => getStore("TEMPLATES"),
-    [Main.EVENTS]: () => getStore("EVENTS"),
-    [Main.MEDIA]: () => getStore("MEDIA"),
-    [Main.THEMES]: () => getStore("THEMES"),
-    [Main.DRIVE_API_KEY]: () => getStore("DRIVE_API_KEY"),
-    [Main.HISTORY]: () => getStore("HISTORY"),
-    [Main.USAGE]: () => getStore("USAGE"),
-    [Main.CACHE]: () => getStore("CACHE"),
+export const mainResponses = {
+    ...createPortableResponses(electronPlatform),
     // WINDOW
     [Main.CLOSE]: () => closeMain(),
     [Main.MAXIMIZE]: () => maximizeMain(),
@@ -81,20 +88,14 @@ export const mainResponses: MainResponses = {
     [Main.FULLSCREEN]: () => getMainWindow()?.setFullScreen(!getMainWindow()?.isFullScreen()),
     [Main.SPELLCHECK]: (a) => correctSpelling(a),
     /// //////////////////////
-    [Main.SAVE]: (a) => save(a),
     [Main.BACKUPS]: () => getBackups(),
     [Main.DELETE_BACKUP]: (data) => deleteBackup(data),
     [Main.IMPORT]: (data) => startImport(data),
     [Main.IMPORT_FILES]: (data) => importFiles(data),
-    [Main.BIBLE]: (data) => loadScripture(data),
-    [Main.SHOW]: (data) => loadShow(data),
     // MAIN
-    [Main.SHOWS]: (() => loadShowsAsync()) as any,
     [Main.AUTO_UPDATE]: () => checkForUpdates(),
     [Main.URL]: (data) => openURL(data),
     [Main.LANGUAGE]: (data) => setGlobalMenu(data.strings),
-    [Main.GET_PATHS]: () => getPaths(),
-    [Main.DATA_PATH]: () => getDataFolderRoot(),
     [Main.UPDATE_DATA_PATH]: (data) => {
         config.set("dataPath", data.newPath)
         createStores(data.oldPath)
@@ -105,14 +106,11 @@ export const mainResponses: MainResponses = {
     [Main.OPEN_APPDATA]: () => openInSystem(appDataPath, true),
     [Main.OPEN_FOLDER_PATH]: (folderPath) => openInSystem(folderPath, true),
     [Main.OPEN_NOW_PLAYING]: () => openNowPlaying(),
-    [Main.GET_STORE_VALUE]: (data) => getStoreValue(data),
-    [Main.SET_STORE_VALUE]: (data) => setStoreValue(data),
     // SHOWS
     [Main.DELETE_SHOWS]: (data) => deleteShows(data),
     [Main.DELETE_SHOWS_NI]: (data) => deleteShowsNotIndexed(data),
     [Main.REFRESH_SHOWS]: () => refreshAllShows(),
     [Main.GET_EMPTY_SHOWS]: (data) => getEmptyShows(data),
-    [Main.FULL_SHOWS_LIST]: () => getAllShows(),
     // OUTPUT
     [Main.GET_SCREENS]: () => getScreens(),
     [Main.GET_WINDOWS]: () => getScreens("window"),
@@ -173,10 +171,7 @@ export const mainResponses: MainResponses = {
     [Main.GET_SIMILAR]: (data) => getSimularPaths(data),
     [Main.BUNDLE_MEDIA_FILES]: (data) => bundleMediaFiles(data),
     [Main.MEDIA_FOLDER_COPY]: (data) => addToMediaFolder(data.paths),
-    [Main.READ_BIBLES_FOLDER]: () => readBiblesFolder(),
     [Main.FILE_INFO]: (data) => getFileInfo(data),
-    [Main.READ_FOLDER]: (data) => readFolderContent(data),
-    [Main.READ_FILE]: (data) => ({ content: readFile(data.path) }),
     [Main.OPEN_FOLDER]: (data) => selectFolder(data),
     [Main.OPEN_FILE]: (data) => selectFiles(data),
     // SYNC
@@ -285,7 +280,7 @@ export const mainResponses: MainResponses = {
     [Main.AI_SETUP]: (data) => aiHandleLocalSetup(data),
     [Main.AI_SET_KEY]: (data) => setAiKey(data),
     [Main.AI_LLM_COMPLETE]: (data) => completeLLM(data)
-}
+} satisfies MainResponses
 
 /// ///////
 

@@ -6,17 +6,21 @@
 //   GET /media/meta?path=<path>&token=<token>       { path, size, mtimeMs, hash, mime }
 //   POST /media/manifest { paths: [...] }           batch meta for prefetching
 //
-// Only serves known media extensions (a basic safety allowlist on top of token auth).
-// /media sets ETag (size+mtime) + Last-Modified and honors If-None-Match, so clients
-// can revalidate cheaply; the meta/manifest endpoints back the persistent local
-// media cache on hybrid desktop clients (hash-validated, project-level prefetch).
+// Only serves known media extensions (a basic safety allowlist on top of token auth),
+// and never serves Trash contents (trashed files must restore before they resolve).
+// /media sets ETag (size+mtime) + Last-Modified with `Cache-Control: private,
+// no-cache` and honors If-None-Match, so clients revalidate cheaply (304) instead
+// of serving stale bytes for trashed-then-restored files; the meta/manifest
+// endpoints back the persistent local media cache on hybrid desktop clients
+// (hash-validated, project-level prefetch).
 
 import type { Express, Request, Response } from "express"
 import express from "express"
 import fs from "fs"
 import path from "path"
 import { httpAuth } from "./auth"
-import { resolveInSandbox, toSandboxRelative } from "./data/dataPaths"
+import { isTrashRel, resolveInSandbox, toSandboxRelative } from "./data/dataPaths"
+import { bumpMediaLibraryVersion } from "./data/libraryVersion"
 import { getMediaHash, peekCachedHash } from "./mediaHash"
 
 const MAX_UPLOAD_BYTES = "2gb"
@@ -56,6 +60,12 @@ const MEDIA_MIME: { [ext: string]: string } = {
     pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 }
 
+/** True when the path's extension is a servable (and trashable) media type. */
+export function isSupportedMediaPath(filePath: string): boolean {
+    const ext = path.extname(filePath).slice(1).toLowerCase()
+    return !!MEDIA_MIME[ext]
+}
+
 export interface MediaMeta {
     /** sandbox-relative path (the cache key clients use) */
     path: string
@@ -75,6 +85,9 @@ function resolveMediaFile(raw: unknown): { filePath: string; stat: fs.Stats; mim
     // confine to the sandbox root: rejects ../ traversal and absolute paths outside it
     const filePath = resolveInSandbox(raw)
     if (!filePath) return { status: 403, message: "forbidden" }
+
+    // never serve Trash contents (applies to /media, /media/meta, and /media/manifest)
+    if (isTrashRel(toSandboxRelative(filePath))) return { status: 403, message: "forbidden" }
 
     // safety: only serve known media extensions (token auth already applied above)
     const ext = path.extname(filePath).slice(1).toLowerCase()
@@ -121,7 +134,10 @@ export function registerMediaRoutes(app: Express) {
 
         res.setHeader("Content-Type", mime)
         res.setHeader("Accept-Ranges", "bytes")
-        res.setHeader("Cache-Control", "public, max-age=86400")
+        // private + always revalidate: the library is mutable (trash/restore/
+        // upload), so a shared max-age would serve stale bytes for paths that
+        // changed; the ETag below keeps revalidation at a cheap 304
+        res.setHeader("Cache-Control", "private, no-cache")
         res.setHeader("ETag", etag)
         res.setHeader("Last-Modified", stat.mtime.toUTCString())
         // hash header when already cached — the hot path never hashes (see mediaHash.ts)
@@ -226,6 +242,7 @@ export function registerMediaRoutes(app: Express) {
             console.error("Upload failed:", target, err)
             return void res.status(500).send("write failed")
         }
+        bumpMediaLibraryVersion()
 
         return void res.json({ path: toSandboxRelative(target), name })
     })

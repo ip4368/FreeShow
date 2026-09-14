@@ -62,4 +62,3 @@ export type ToMainReceiveValue<ID extends ToMain = ToMain> = {
     channel: ID
     data: ToMainReceiveData<ID>
 }
-

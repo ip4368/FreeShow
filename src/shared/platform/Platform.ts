@@ -6,6 +6,11 @@ export interface SaveResult {
     complete: { closeWhenFinished: boolean; customTriggers: any }
 }
 
+export interface BackupAdapter {
+    restoreEntries(entries: { name: string; content: string }[]): RestoreResult
+    buildBackupZip(): Promise<Buffer>
+}
+
 export interface TrashAdapter {
     trashFiles(data: { paths: string[]; deletedBy?: string }): { trashed: any[]; failed: { path: string; reason: string }[]; paths: string[] }
     restoreTrash(data: { ids: string[] }): { restored: { id: string; path: string; originalPath: string; renamed: boolean }[]; failed: { path: string; reason: string }[]; paths: string[]; manifestError?: string }
@@ -38,8 +43,7 @@ export interface PersistenceAdapter {
     getDataFolderPath(id: string): string
     getPaths(): any
 
-    restoreEntries?(entries: { name: string; content: string }[]): RestoreResult
-    buildBackupZip?(): Promise<Buffer>
+    backup?: BackupAdapter
     trash?: TrashAdapter
 }
 

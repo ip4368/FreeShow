@@ -36,6 +36,7 @@ type CorePortableChannel =
     | Main.DATA_PATH
     | Main.READ_FOLDER
     | Main.READ_FILE
+    | Main.CREATE_FOLDER
 
 interface PortablePayloads {
     [Main.LOG]: unknown
@@ -46,6 +47,7 @@ interface PortablePayloads {
     [Main.SHOW]: Parameters<PersistenceAdapter["loadShow"]>[0]
     [Main.READ_FOLDER]: Parameters<PersistenceAdapter["readFolderContent"]>[0]
     [Main.READ_FILE]: { path: string }
+    [Main.CREATE_FOLDER]: Parameters<PersistenceAdapter["createFolder"]>[0]
 }
 
 export type PortableHandler<ID extends CorePortableChannel> = ID extends keyof PortablePayloads ? (data: PortablePayloads[ID]) => any : () => any
@@ -95,6 +97,7 @@ export function createPortableResponses(platform: Platform) {
         [Main.GET_PATHS]: () => data.getPaths(),
         [Main.DATA_PATH]: () => data.getDataFolderRoot(),
         [Main.READ_FOLDER]: (value) => data.readFolderContent(value),
-        [Main.READ_FILE]: (value) => ({ content: data.readFile(value.path) })
+        [Main.READ_FILE]: (value) => ({ content: data.readFile(value.path) }),
+        [Main.CREATE_FOLDER]: (value) => data.createFolder(value)
     } satisfies PortableResponses
 }

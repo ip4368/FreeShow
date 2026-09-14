@@ -6,6 +6,7 @@ import { createPortableResponses } from "./createPortableResponses"
 function createPlatform() {
     const data: PersistenceAdapter = {
         getStore: vi.fn((id) => ({ id })),
+        setStore: vi.fn(),
         getStoreValue: vi.fn(),
         setStoreValue: vi.fn(),
         save: vi.fn(),
@@ -15,9 +16,12 @@ function createPlatform() {
         loadScripture: vi.fn(),
         readBiblesFolder: vi.fn(),
         getDataFolderRoot: vi.fn(() => "/data"),
+        getDataFolderPath: vi.fn(() => "/data/media"),
         getPaths: vi.fn(() => ({ media: "/data/media" })),
         readFile: vi.fn(() => "contents"),
-        readFolderContent: vi.fn()
+        readFolder: vi.fn(),
+        readFolderContent: vi.fn(),
+        createFolder: vi.fn()
     }
     const platform: Platform = {
         id: "electron",

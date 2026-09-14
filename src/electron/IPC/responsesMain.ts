@@ -54,6 +54,7 @@ const electronPlatform: Platform = {
     capabilities: ELECTRON_CAPABILITIES,
     data: {
         getStore: (id) => getStore(id as any),
+        setStore: (id, value) => (_store as any)[id]?.set(value),
         getStoreValue,
         setStoreValue,
         save,
@@ -63,9 +64,12 @@ const electronPlatform: Platform = {
         loadScripture,
         readBiblesFolder,
         getDataFolderRoot,
+        getDataFolderPath,
         getPaths,
         readFile,
-        readFolderContent
+        readFolder,
+        readFolderContent,
+        createFolder: ({ path: folderPath, name }) => createFolder(path.join(folderPath, name))
     },
     isDevelopment: () => !isProd,
     getCachePath: getThumbnailFolderPath,

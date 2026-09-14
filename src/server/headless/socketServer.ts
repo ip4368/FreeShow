@@ -10,6 +10,7 @@ import { HEADLESS_CAPABILITIES } from "../../shared/platform/capabilities"
 import { Main } from "../../types/IPC/channels"
 import { invalidateDoc } from "./crdt/docRegistry"
 import { handleYjsMessage } from "./crdt/relay"
+import { getMediaLibraryVersion } from "./data/libraryVersion"
 import { headlessPlatform } from "./platform/headlessPlatform"
 
 const responses = {
@@ -28,7 +29,15 @@ interface MainEnvelope {
 
 // mirrors the STARTUP {channel:"TYPE"} message the desktop main sends on did-finish-load
 function startupPayload() {
-    return { data: { channel: "TYPE", data: null, autoProfile: "", capabilities: HEADLESS_CAPABILITIES } }
+    return { data: { channel: "TYPE", data: null, autoProfile: "", capabilities: HEADLESS_CAPABILITIES, mediaLibraryVersion: getMediaLibraryVersion() } }
+}
+
+// trash mutations and the MEDIA_LIBRARY_CHANGED kind each one broadcasts
+const TRASH_BROADCASTS: Record<string, string> = {
+    TRASH_FILES: "trashed",
+    TRASH_RESTORE: "restored",
+    TRASH_DELETE: "deleted",
+    TRASH_EMPTY: "emptied"
 }
 
 export function registerClient(io: Server, socket: Socket) {
@@ -49,6 +58,19 @@ export function registerClient(io: Server, socket: Socket) {
         if (!handler) return // unhandled channel (e.g. Electron-only) -> ignored on headless
 
         try {
+            // TRASH: reply to the actor, then broadcast to EVERY client (including
+            // the actor) so all drawers + trash views refresh. deletedBy is
+            // best-effort: the socket address, unless the client sent a label.
+            const trashKind = TRASH_BROADCASTS[inner.channel]
+            if (trashKind) {
+                const input = inner.data && typeof inner.data === "object" ? inner.data : {}
+                if (inner.channel === "TRASH_FILES" && !input.deletedBy) input.deletedBy = socket.handshake.address
+                const trashResult = (await handler(input)) || {}
+                socket.emit("MAIN", { data: { channel: inner.channel, data: trashResult }, listenerId: payload.listenerId })
+                io.emit("MAIN", { data: { channel: "MEDIA_LIBRARY_CHANGED", data: { kind: trashKind, v: getMediaLibraryVersion(), paths: trashResult.paths || [] } } })
+                return
+            }
+
             const response = await handler(inner.data)
 
             // SAVE: reply completion to the saver, and push changed library stores to

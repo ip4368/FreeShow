@@ -11,6 +11,8 @@ import type { PersistenceAdapter, RestoreResult, SaveResult } from "../../../sha
 import { zipEntries } from "../../../shared/data/zip"
 import { getDataFolderPath, getDataFolderRoot, resolveInSandbox, toSandboxRelative } from "./dataPaths"
 import { getStore, getStoreValue, setStore, setStoreValue } from "./headlessStore"
+import { deleteTrashPermanent, emptyTrash, isTrashRel, listTrash, restoreTrash, trashPaths } from "./trash"
+import { findMediaUsage } from "./usage"
 
 function trimShow(showCache: Show): TrimmedShow | null {
     if (!showCache) return null
@@ -120,7 +122,8 @@ export function readFolderContent(data: { path: string | string[]; depth?: numbe
 
     for (const input of inputs) {
         const abs = resolveInSandbox(input)
-        if (abs) walk(abs, 0)
+        // Trash is managed through its own channels — never expose it as a browsable folder
+        if (abs && !isTrashRel(toSandboxRelative(abs))) walk(abs, 0)
     }
 
     function walk(folderPath: string, currentDepth: number) {
@@ -132,7 +135,7 @@ export function readFolderContent(data: { path: string | string[]; depth?: numbe
         } catch {
             return
         }
-        const filePathsAbs = entries.map((name) => joinPath(folderPath, name))
+        const filePathsAbs = entries.map((name) => joinPath(folderPath, name)).filter((p) => !isTrashRel(toSandboxRelative(p)))
         const filePathsRel = filePathsAbs.map(toSandboxRelative)
 
         if (currentDepth > depth) {
@@ -308,6 +311,34 @@ export async function buildBackupZip(): Promise<Buffer> {
     return zipEntries(entries)
 }
 
+// ----- TRASH (remote drawer deletes; entries expire after 30 days) -----
+
+export function trashFiles(data: { paths: string[]; deletedBy?: string }): any {
+    return trashPaths(data?.paths || [], data?.deletedBy)
+}
+
+export function restoreTrashFiles(data: { ids: string[] }): any {
+    return restoreTrash(data?.ids || [])
+}
+
+export function deleteTrashFiles(data: { ids: string[] }): any {
+    return deleteTrashPermanent(data?.ids || [])
+}
+
+export function emptyTrashFiles(): any {
+    return emptyTrash()
+}
+
+export function listTrashFiles(): any {
+    return listTrash()
+}
+
+// ----- MEDIA USAGE ("used by" scan for delete confirms) -----
+
+export function mediaUsage(data: { paths: string[]; includeOrphans?: boolean }): any {
+    return findMediaUsage(data?.paths || [], { includeOrphans: !!data?.includeOrphans })
+}
+
 export const headlessPersistence: PersistenceAdapter = {
     getStore,
     setStore,
@@ -327,5 +358,13 @@ export const headlessPersistence: PersistenceAdapter = {
     getDataFolderPath,
     getPaths: () => ({}),
     restoreEntries,
-    buildBackupZip
+    buildBackupZip,
+    trash: {
+        trashFiles,
+        restoreTrash: restoreTrashFiles,
+        deleteTrash: deleteTrashFiles,
+        emptyTrash: emptyTrashFiles,
+        listTrash: listTrashFiles,
+        findMediaUsage: mediaUsage
+    }
 }

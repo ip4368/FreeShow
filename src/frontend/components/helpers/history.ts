@@ -3,7 +3,7 @@ import type { History, HistoryNew, HistoryTypes } from "../../../types/History"
 import { activePage, activeProject, activeShow, historyCacheCount, isDev, projects, undoHistory } from "../../stores"
 import { redoHistory } from "./../../stores"
 import { areObjectsEqual, clone } from "./array"
-import { historyActions } from "./historyActions"
+import { historyActions, pruneUnreachableShowMedia } from "./historyActions"
 import { createStore, createStoreHistory, deleteStore, deleteStoreHistory, updateStore, updateStoreHistory } from "./historyStores"
 import { deselect } from "./select"
 import { loadShows } from "./setShow"
@@ -134,6 +134,8 @@ export function history(obj: History, shouldUndo: null | boolean = null) {
                         // let layoutSlide = _show(showIDs).layouts([obj.location!.layout!]).slides([ref.index]).get()[0]
                         if (layoutRefSlide.type === "parent") _show(showID).layouts([obj.location.layout!]).slides([layoutRefSlide.index]).set({ key: "background", value: bgid })
                         else _show(showID).layouts([obj.location.layout!]).slides([layoutRefSlide.parent?.index]).children([layoutRefSlide.id]).set({ key: "background", value: bgid })
+                        // the replaced background's entry is orphaned unless shared: prune
+                        pruneUnreachableShowMedia(showID)
                     }
                 }
                 break
@@ -174,6 +176,8 @@ export function history(obj: History, shouldUndo: null | boolean = null) {
                         if (ref.type === "parent") _show(showID).layouts([obj.location.layout!]).slides([ref.index]).set({ key: "audio", value: audio })
                         else _show(showID).layouts([obj.location.layout!]).slides([ref.parent?.index]).children([ref.id]).set({ key: "audio", value: audio })
                     }
+                    // a replaced audio id is orphaned unless shared: prune
+                    pruneUnreachableShowMedia(showID)
                 }
                 break
 

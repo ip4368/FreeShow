@@ -1,4 +1,5 @@
 import { get } from "svelte/store"
+import { pruneShowMedia } from "../../shared/media/collectShowMedia"
 import { Main } from "../../types/IPC/Main"
 import type { Projects } from "../../types/Projects"
 import type { Shows } from "../../types/Show"
@@ -252,6 +253,15 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
     }
 
     const saveData = clone(allSavedData)
+
+    // drop orphaned media-map entries from the saved copy (historical orphans
+    // from before delete-time pruning; the live shows are untouched — only
+    // what hits the disk is swept)
+    for (const show of Object.values(saveData.showsCache || {})) {
+        if (!show) continue
+        const { media, pruned } = pruneShowMedia(show)
+        if (pruned.length) show.media = media
+    }
 
     deletedShows.set([])
     renamedShows.set([])

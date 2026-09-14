@@ -13,10 +13,11 @@
 
 import { get } from "svelte/store"
 import { collectMediaPathsFromProject, collectMediaPathsFromShow } from "../../shared/media/collectShowMedia"
+import { decideLibraryReconcile } from "../../shared/media/mediaLibraryVersion"
 import { Main } from "../../types/IPC/Main"
 import { requestMain } from "../IPC/main"
 import { getConnectionToken, getRemoteServerConfig, isSocketTransport } from "../IPC/transport"
-import { activeProject, activeShow, overlays, projects, showsCache, special, templates } from "../stores"
+import { activeProject, activeShow, connectionStatus, mediaLibraryVersion, overlays, projects, showsCache, special, templates } from "../stores"
 import { newToast } from "./common"
 import { getServerMediaUrl } from "./mediaGateway"
 
@@ -389,6 +390,67 @@ function dropEvictedMappings(evicted: string[]) {
     invalidateCachedReplacedPaths()
 }
 
+/**
+ * Forget mappings for server-deleted paths (trash broadcast): playback must
+ * re-resolve (gateway 404 = missing) instead of serving a stale local copy.
+ */
+export function forgetLocalMediaMappings(remotePaths: string[]) {
+    if (!Array.isArray(remotePaths) || !remotePaths.length) return
+    forgetMappings(remotePaths.map((p) => normalizeKey(p)))
+    invalidateCachedReplacedPaths()
+}
+
+// ----- library-version tracking (reconnect reconciliation) -----
+// The server bumps a persisted epoch on every library mutation. Broadcasts
+// carry it while connected; on reconnect we fetch TRASH_LIST (cheap, carries
+// the epoch too) and compare — a mismatch means broadcasts were missed while
+// away, so every mapping is dropped and playback re-resolves from the gateway.
+
+const MAP_LIB_VERSION_KEY = "freeshow_media_lib_version"
+let seenLibraryVersion: number | null = null
+
+/** Adopt a server-reported epoch (broadcast / list / startup). Ignores garbage. */
+export function noteMediaLibraryVersion(v: unknown) {
+    if (typeof v !== "number" || !Number.isFinite(v)) return
+    seenLibraryVersion = v
+    try {
+        if (typeof localStorage !== "undefined") localStorage.setItem(MAP_LIB_VERSION_KEY, String(v))
+    } catch {
+        // storage disabled — the in-memory baseline still covers this session
+    }
+}
+
+/** Last-seen epoch: memory first, then the persisted baseline (cross-restart). */
+export function getSeenMediaLibraryVersion(): number | null {
+    if (typeof seenLibraryVersion === "number") return seenLibraryVersion
+    try {
+        if (typeof localStorage !== "undefined") {
+            const stored = Number(localStorage.getItem(MAP_LIB_VERSION_KEY))
+            if (Number.isFinite(stored)) seenLibraryVersion = stored
+        }
+    } catch {
+        // storage disabled — no baseline
+    }
+    return seenLibraryVersion
+}
+
+/**
+ * Revalidate after a reconnect: when the epoch moved while away, drop every
+ * mapping + rendered-path entry (bytes stay on disk; prefetch re-resolves by
+ * hash) and poke drawers to refresh. resolveGeneration is NOT bumped — that
+ * guard is for in-flight resolves, and a reconnect has none of ours.
+ */
+export async function reconcileMediaLibraryAfterReconnect(): Promise<boolean> {
+    const list = await requestMain(Main.TRASH_LIST).catch(() => null)
+    const decision = decideLibraryReconcile(getSeenMediaLibraryVersion(), list?.v)
+    noteMediaLibraryVersion(decision.seen)
+    if (!decision.reconcile) return false
+    invalidateCachedReplacedPaths()
+    forgetMappings(null)
+    mediaLibraryVersion.update((v) => ({ kind: "reconnected", n: v.n + 1 }))
+    return true
+}
+
 // coalesced background fetch for cache misses during playback: N misses in quick
 // succession become ONE manifest round-trip instead of N (F5)
 const bgFetchQueue = new Set<string>()
@@ -576,6 +638,20 @@ export function initRemoteMediaCache() {
         lastProjectSig = ""
         prefetchedShowIds = new Set<string>()
         if (!projectId) return
+    })
+
+    // reconnect after a drop: broadcasts were missed while away, so compare the
+    // library epoch and revalidate when it moved (no-op on the initial connect)
+    let wasAway = false
+    connectionStatus.subscribe((status) => {
+        if (status === "disconnected" || status === "reconnecting") {
+            wasAway = true
+            return
+        }
+        if (status === "connected" && wasAway) {
+            wasAway = false
+            void reconcileMediaLibraryAfterReconnect()
+        }
     })
 }
 

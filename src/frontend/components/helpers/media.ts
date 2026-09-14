@@ -204,6 +204,23 @@ registerReplacedPathsInvalidator(() => {
         if (isCachedLocalPath(value.path) || (value.thumbnail && isCachedLocalPath(value.thumbnail))) replacedPaths.delete(key)
     }
 })
+
+/**
+ * Drop resolved/located/exists entries for server-deleted paths (trash
+ * broadcast), so drawers and shows re-resolve instead of serving stale data.
+ * Keys are deleted (not set false) so a later restore re-checks on demand.
+ */
+export function invalidateMediaPaths(paths: string[]) {
+    if (!Array.isArray(paths) || !paths.length) return
+    for (const p of paths) {
+        if (typeof p !== "string" || !p) continue
+        locatedMediaCache.delete(p)
+        mediaExistsCache.delete(p)
+        for (const key of [...replacedPaths.keys()]) {
+            if (key === p || key.startsWith(p + "-")) replacedPaths.delete(key)
+        }
+    }
+}
 export async function getMedia(path: string, size: number = mediaSize.drawerSize) {
     if (typeof path !== "string" || !path) return null
     if (locatedMediaCache.get(path) === null) return null

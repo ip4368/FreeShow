@@ -7,7 +7,7 @@ import express from "express"
 import path from "path"
 import { doesPathExist } from "../../shared/data/fsCore"
 import { HEADLESS_CAPABILITIES } from "../../shared/platform/capabilities"
-import { registerMediaRoutes } from "./mediaRoutes"
+import { registerMediaRoutes, type MediaRouteOptions } from "./mediaRoutes"
 import { registerThumbnailRoutes } from "./thumbnailRoutes"
 
 export function getWebDir(): string {
@@ -20,7 +20,7 @@ function getPublicDir(): string {
     return process.env.FREESHOW_PUBLIC_DIR || path.join(process.cwd(), "public")
 }
 
-export function registerHttpRoutes(app: Express) {
+export function registerHttpRoutes(app: Express, options: MediaRouteOptions = {}) {
     const webDir = getWebDir()
 
     // allow remote (cross-origin) clients to read JSON/media endpoints; token still gates protected routes
@@ -34,7 +34,7 @@ export function registerHttpRoutes(app: Express) {
     app.get("/capabilities", (_req: Request, res: Response) => res.json(HEADLESS_CAPABILITIES))
 
     // Feature routes must be registered before the SPA fallback below.
-    registerMediaRoutes(app)
+    registerMediaRoutes(app, options)
     registerThumbnailRoutes(app)
 
     if (doesPathExist(webDir)) {

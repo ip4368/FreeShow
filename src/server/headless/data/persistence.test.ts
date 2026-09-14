@@ -39,6 +39,16 @@ describe("headless readFolderContent (sandboxed server browsing)", () => {
         expect(readFolderContent({ path: "../../.." })).toEqual({})
         expect(readFolderContent({ path: "/etc" })).toEqual({})
     })
+
+    it("never exposes Trash as a browsable folder", () => {
+        fs.mkdirSync(path.join(tmp, "Trash", "some-id"), { recursive: true })
+        fs.writeFileSync(path.join(tmp, "Trash", "some-id", "a.png"), "x")
+
+        const root = readFolderContent({ path: "", depth: 0 })
+        expect(Object.keys(root).some((k) => k.toLowerCase().startsWith("trash"))).toBe(false)
+        expect(root[""]?.files).not.toContain("Trash")
+        expect(readFolderContent({ path: "Trash" })).toEqual({})
+    })
 })
 
 describe("headless createFolder (sandboxed)", () => {

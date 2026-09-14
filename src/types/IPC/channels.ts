@@ -165,6 +165,12 @@ export enum Main {
     // Streaming encoder
     ENCODER_DETECT = "ENCODER_DETECT",
     SET_RTMP_ENCODER = "SET_RTMP_ENCODER",
+    // Remote-media cache (hybrid desktop: LOCAL only — this machine's disk cache
+    // of the server's library media; see src/shared/media/mediaCacheCore.ts)
+    MEDIA_CACHE_GET = "MEDIA_CACHE_GET",
+    MEDIA_CACHE_PREFETCH = "MEDIA_CACHE_PREFETCH",
+    MEDIA_CACHE_STATUS = "MEDIA_CACHE_STATUS",
+    MEDIA_CACHE_CLEAR = "MEDIA_CACHE_CLEAR",
     // AI
     AI_GET_MODELS = "AI_GET_MODELS",
     AI_GET_BIN = "AI_GET_BIN",

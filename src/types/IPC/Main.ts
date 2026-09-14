@@ -130,6 +130,11 @@ export interface MainSendPayloads {
     // Streaming encoder
     [Main.ENCODER_DETECT]: { force?: boolean } | undefined
     [Main.SET_RTMP_ENCODER]: { outputId: string; encoder: string }
+    // Remote-media cache (LOCAL only)
+    [Main.MEDIA_CACHE_GET]: { path: string }
+    [Main.MEDIA_CACHE_PREFETCH]: { paths: string[]; serverUrl: string; token?: string; maxBytes?: number }
+    [Main.MEDIA_CACHE_STATUS]: undefined
+    [Main.MEDIA_CACHE_CLEAR]: undefined
     // AI
     [Main.AI_GET_MODELS]: { providerId: AIProviderId }
     [Main.AI_LISTEN_START]: { engine: string; engineOptions: SttEngineOptions }
@@ -244,6 +249,11 @@ export interface MainReturnPayloads {
     [Main.FFMPEG_DOWNLOAD]: Promise<{ success: boolean; error?: string }>
     // Streaming encoder
     [Main.ENCODER_DETECT]: Promise<EncoderDetection>
+    // Remote-media cache (LOCAL only)
+    [Main.MEDIA_CACHE_GET]: { path: string; localPath: string | null; cached: boolean } | null
+    [Main.MEDIA_CACHE_PREFETCH]: Promise<{ requested: number; downloaded: number; skipped: number; failed: { path: string; reason: string }[]; bytes: number; evicted: string[] }>
+    [Main.MEDIA_CACHE_STATUS]: { files: number; bytes: number; dir: string }
+    [Main.MEDIA_CACHE_CLEAR]: { clearedFiles: number; freedBytes: number }
     // AI
     [Main.AI_GET_BIN]: Promise<{ path: string; name: string; size: number }[]>
     [Main.AI_LISTEN_START]: Promise<{ started: boolean; error?: string }>

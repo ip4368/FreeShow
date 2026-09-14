@@ -7,7 +7,7 @@ import { syncIcsCalendars } from "../components/drawer/calendar/calendars"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
 import { cameraManager } from "../media/cameraManager"
-import { activePopup, activeProfile, alertMessage, cachePath, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, profiles, providerConnections, shows, special, version, windowState } from "../stores"
+import { activePopup, activeProfile, alertMessage, cachePath, capabilities, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, profiles, providerConnections, shows, special, version, windowState } from "../stores"
 import { startTracking } from "./analytics"
 import { setupCloudSync } from "./cloudSync"
 import { wait, waitUntilValueIsDefined } from "./common"
@@ -35,6 +35,8 @@ export async function startup() {
             if (initialized || msg.channel !== "TYPE") return
             initialized = true // only call this once per window
             destroy(STARTUP, "startup")
+
+            if (msg.capabilities) capabilities.set(msg.capabilities)
 
             const type = msg.data
             currentWindow.set(type)

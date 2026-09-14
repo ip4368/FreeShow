@@ -3,6 +3,7 @@
 
 import type { Rectangle } from "electron"
 import { BrowserWindow, Menu, app, ipcMain, powerSaveBlocker, protocol, screen } from "electron"
+import { ELECTRON_CAPABILITIES } from "../shared/platform/capabilities"
 import { AUDIO, BLACKMAGIC, CLOUD, EXPORT, MAIN, NDI, OMT, OUTPUT, STARTUP } from "../types/Channels"
 import { Main } from "../types/IPC/Main"
 import { ToMain } from "../types/IPC/ToMain"
@@ -274,7 +275,7 @@ export async function loadWindowContent(window: BrowserWindow, type: null | "out
 
     window.webContents.ipc.on(STARTUP, (_event, msg) => {
         if (msg?.channel === "READY") {
-            window.webContents.send(STARTUP, { channel: "TYPE", data: type, autoProfile })
+            window.webContents.send(STARTUP, { channel: "TYPE", data: type, autoProfile, capabilities: ELECTRON_CAPABILITIES })
         }
     })
 

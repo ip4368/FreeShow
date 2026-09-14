@@ -4,6 +4,7 @@ artifactName: FreeShow-${version}-${arch}.${ext}
 
 files:
     - build/electron/**
+    - build/shared/**
     - build/types/**
     - public/**
     - "!node_modules/@napi-rs"

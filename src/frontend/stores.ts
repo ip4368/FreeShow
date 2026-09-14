@@ -6,6 +6,7 @@ import type { ICommonTagsResult } from "music-metadata"
 import { type Writable, writable } from "svelte/store"
 import type { ContentProviderId } from "../electron/contentProviders/base/types"
 import type { TimecodeMode } from "../electron/timecode/timecode"
+import { ELECTRON_CAPABILITIES, type CapabilitySet } from "../shared/platform/capabilities"
 import type { AiFeatureStatus } from "../types/ai/Ai"
 import type { AudioChannelData, AudioStream, MetronomeSettings, Playlist } from "../types/Audio"
 import type { AudioRoutingConfig } from "../types/AudioRouting"
@@ -35,6 +36,7 @@ export const os: Writable<OS> = writable({ platform: "win32", name: "", arch: ""
 export const deviceId: Writable<string> = writable("")
 export const version: Writable<string> = writable("0.0.0")
 export const currentWindow: Writable<null | "output" | "pdf"> = writable(null)
+export const capabilities: Writable<CapabilitySet> = writable(ELECTRON_CAPABILITIES)
 export const localeDirection: Writable<"rtl" | "ltr"> = writable("ltr")
 export const dictionary: Writable<Dictionary> = writable({})
 export const saved: Writable<boolean> = writable(true)

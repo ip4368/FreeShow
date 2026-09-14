@@ -23,7 +23,8 @@ export const dataFolderNames: { [key: string]: string } = {
     recordings: "Recordings",
     audio: "Audio",
     userData: "Config",
-    cloud: "Cloud"
+    cloud: "Cloud",
+    trash: "Trash"
 }
 
 let dataRoot = ""
@@ -71,4 +72,10 @@ export function resolveInSandbox(requested: string | undefined): string | null {
 /** Absolute sandbox path -> path relative to the sandbox root ("" for the root itself). */
 export function toSandboxRelative(abs: string): string {
     return path.relative(getSandboxRoot(), abs)
+}
+
+/** True when a sandbox-relative path is inside Trash (for serving/listing exclusion). */
+export function isTrashRel(rel: string): boolean {
+    const norm = rel.replace(/\\/g, "/").toLowerCase()
+    return norm === "trash" || norm.startsWith("trash/")
 }

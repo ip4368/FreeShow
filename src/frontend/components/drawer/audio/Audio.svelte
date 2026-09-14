@@ -14,7 +14,8 @@
     import { splitPath } from "../../helpers/get"
     import { getExtension, getFileName, getMediaType } from "../../helpers/media"
     import { isSocketTransport } from "../../../IPC/transport"
-    import { uploadToServer } from "../../../utils/mediaGateway"
+    import { uploadToServerWithProgress } from "../../../utils/mediaGateway"
+    import { acknowledgeFolderUploads, mediaUploads, queueMediaUploads, uploadsForFolder } from "../../../utils/mediaUpload"
     import { trashPathsWithConfirm } from "../../../utils/trash"
     import { joinTime, secondsToTime } from "../../helpers/time"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
@@ -28,6 +29,7 @@
     import TrashBrowser from "../media/TrashBrowser.svelte"
     import AudioEffect from "./AudioEffect.svelte"
     import AudioFile from "./AudioFile.svelte"
+    import AudioUploadRow from "./AudioUploadRow.svelte"
     import Metronome from "./Metronome.svelte"
 
     export let active: string | null
@@ -95,26 +97,30 @@
     // upload into the current server folder (remote clients can't drag in local files)
     const remoteLibrary = isSocketTransport()
     let uploadInput: HTMLInputElement
-    let uploading = ""
-    async function uploadFiles(e: Event) {
+    function uploadFiles(e: Event) {
         const files = Array.from((e.target as HTMLInputElement).files || [])
+        if (uploadInput) uploadInput.value = ""
         if (!files.length || !path) return
 
-        let done = 0
-        for (const file of files) {
-            uploading = `${++done}/${files.length}`
-            await uploadToServer(path, file)
-        }
-        uploading = ""
-        if (uploadInput) uploadInput.value = ""
-        requestFiles(path, currentDepth)
+        // placeholders render from the queue below; no refresh here — each landed
+        // upload broadcasts MEDIA_LIBRARY_CHANGED and the watcher below
+        // re-requests this view when the files land
+        queueMediaUploads(path, files, "audio", uploadToServerWithProgress)
     }
 
-    // another client (or the expiry sweep) changed the server library: re-request this view
+    // in-flight/failed uploads targeting the currently viewed folder (path is ""
+    // outside folder views, which hides the placeholders there automatically)
+    $: folderUploads = uploadsForFolder($mediaUploads, path, "audio")
+    $: activeUploadCount = folderUploads.filter((u) => u.status === "queued" || u.status === "uploading").length
+
+    // another client (or the expiry sweep, or an upload) changed the server library: re-request this view
     let lastLibVersion = 0
     $: if ($mediaLibraryVersion.n > lastLibVersion) {
         lastLibVersion = $mediaLibraryVersion.n
         if (active !== "trash" && active !== "inputs" && active !== "effects_library" && active !== "metronome" && !playlist) {
+            // the re-request lists freshly landed uploads: drop their lingering
+            // placeholders now so they don't double with the real files
+            acknowledgeFolderUploads(path, "audio")
             prevActive = ""
             updateContent()
         }
@@ -404,7 +410,7 @@
                     </Center>
                 {/if}
             </DropArea>
-        {:else if searchedFiles.length}
+        {:else if searchedFiles.length || folderUploads.length}
             {#if active === "effects_library"}
                 <div class="effects">
                     {#each searchedFiles as file}
@@ -414,6 +420,10 @@
             {:else}
                 {#key rootPath}
                     {#key path}
+                        <!-- uploads first (rows subscribe to the store by id for progress) -->
+                        {#each folderUploads as upload (upload.id)}
+                            <AudioUploadRow uploadId={upload.id} />
+                        {/each}
                         {#each searchedFiles as file}
                             {#if file.isFolder}
                                 <Folder name={file.name} path={file.path} mode="list" on:open={(e) => (path = e.detail)} />
@@ -537,9 +547,9 @@
     {#if remoteLibrary && path}
         <FloatingInputs>
             <input bind:this={uploadInput} type="file" multiple accept="audio/*" style="display: none;" on:change={uploadFiles} />
-            <MaterialButton title="Upload files" disabled={!!uploading} on:click={() => uploadInput?.click()}>
+            <MaterialButton title="media.upload_files" on:click={() => uploadInput?.click()}>
                 <Icon id="upload" white />
-                {#if uploading}<span style="font-size: 0.8em;margin-inline-start: 6px;">{uploading}</span>{/if}
+                {#if activeUploadCount}<span style="font-size: 0.8em;margin-inline-start: 6px;">{activeUploadCount}</span>{/if}
             </MaterialButton>
             <!-- delete the currently viewed SERVER folder (moves to server trash) -->
             <MaterialButton title="actions.delete_folder" on:click={deleteCurrentFolder}>

@@ -62,6 +62,13 @@ export const REMOTE_MAIN_CHANNELS: ReadonlySet<string> = new Set([
     // browsing / creating the server's media/audio folders
     "READ_FOLDER",
     "CREATE_FOLDER",
+    // server trash (remote drawer deletes; entries expire after 30 days)
+    "TRASH_FILES",
+    "TRASH_RESTORE",
+    "TRASH_DELETE",
+    "TRASH_EMPTY",
+    "TRASH_LIST",
+    "MEDIA_USAGE",
     // shared library stores (reusable content: overlays, templates, projects, ...)
     "SYNCED_SETTINGS",
     "PROJECTS",

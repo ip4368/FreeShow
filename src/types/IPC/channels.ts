@@ -125,6 +125,15 @@ export enum Main {
     READ_FOLDER = "READ_FOLDER",
     READ_FILE = "READ_FILE",
     CREATE_FOLDER = "CREATE_FOLDER",
+    // TRASH (remote drawer deletes; server-side, 30-day expiry)
+    TRASH_FILES = "TRASH_FILES",
+    TRASH_RESTORE = "TRASH_RESTORE",
+    TRASH_DELETE = "TRASH_DELETE",
+    TRASH_EMPTY = "TRASH_EMPTY",
+    TRASH_LIST = "TRASH_LIST",
+    MEDIA_USAGE = "MEDIA_USAGE",
+    // broadcast to all clients after any trash mutation (incl. expiry sweep)
+    MEDIA_LIBRARY_CHANGED = "MEDIA_LIBRARY_CHANGED",
     OPEN_FOLDER = "OPEN_FOLDER",
     OPEN_FILE = "OPEN_FILE",
     // SYNC

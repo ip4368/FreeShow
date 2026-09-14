@@ -90,6 +90,7 @@ export interface MainSendPayloads {
     [Main.FILE_INFO]: string
     [Main.READ_FOLDER]: { path: string | string[]; depth?: number; generateThumbnails?: boolean; captureFolderContent?: boolean }
     [Main.READ_FILE]: { path: string }
+    [Main.CREATE_FOLDER]: { path: string; name: string }
     [Main.OPEN_FOLDER]: { channel: string; title?: string; path?: string }
     [Main.OPEN_FILE]: { id: string; channel: string; title?: string; filter: any; multiple: boolean; read?: boolean }
     // SYNC
@@ -207,6 +208,7 @@ export interface MainReturnPayloads {
     [Main.READ_BIBLES_FOLDER]: { path: string; name: string }[]
     [Main.FILE_INFO]: { path: string; stat: Stats; extension: string; folder: boolean } | null
     [Main.READ_FOLDER]: Promise<{ [key: string]: FileFolder }>
+    [Main.CREATE_FOLDER]: string
     [Main.READ_FILE]: { content: string }
     // SYNC
     [Main.CAN_SYNC]: Promise<boolean>

@@ -1,20 +1,33 @@
 import type { OS } from "../../types/Main"
 import type { CapabilitySet } from "./capabilities"
 
+export interface SaveResult {
+    changed: Record<string, any>
+    complete: { closeWhenFinished: boolean; customTriggers: any }
+}
+
 export interface PersistenceAdapter {
     getStore(id: string): any
-    getStoreValue(data: any): any
-    setStoreValue(data: any): any
-    save(data: any): any
+    setStore(id: string, value: any): void
+    getStoreValue(data: { file: string; key: string }): any
+    setStoreValue(data: { file: string; key: string; value: any }): void
+
     loadShow(data: { id: string; name: string }): any
     loadShows(): any
     loadAllShows(): any
+    save(data: any): SaveResult | void | Promise<SaveResult | void>
+
     loadScripture(data: { id: string; name: string }): any
-    readBiblesFolder(): any
-    getDataFolderRoot(): string
-    getPaths(): any
+    readBiblesFolder(): { path: string; name: string }[]
+
     readFile(path: string): string
-    readFolderContent(data: any): any
+    readFolder(path: string): string[]
+    readFolderContent(data: { path: string | string[]; depth?: number; captureFolderContent?: boolean; generateThumbnails?: boolean }): any
+    createFolder(data: { path: string; name: string }): string
+
+    getDataFolderRoot(): string
+    getDataFolderPath(id: string): string
+    getPaths(): any
 }
 
 export interface Platform {

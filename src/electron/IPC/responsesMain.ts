@@ -38,7 +38,7 @@ import { downloadFfmpeg, resolveFfmpegPath } from "../streaming/ffmpegManager"
 import { processAudioData, timecodeStart, timecodeStop, updateTimecodeValue } from "../timecode/timecode"
 import { apiReturnData, emitOSC, startWebSocketAndRest, stopApiListener } from "../utils/api"
 import { closeMain } from "../utils/close"
-import { addToMediaFolder, bundleMediaFiles, getDataFolderPath, getDataFolderRoot, getFileInfo, getMediaCodec, getMediaSyncFolderPath, getMediaTracks, getPaths, getSimularPaths, loadFile, loadShowsAsync, locateMediaFile, openInSystem, readExifData, readFile, readFolder, readFolderContent, selectFiles, selectFilesDialog, selectFolder, setMediaSyncFolderPath, writeFile } from "../utils/files"
+import { addToMediaFolder, bundleMediaFiles, createFolder, getDataFolderPath, getDataFolderRoot, getFileInfo, getMediaCodec, getMediaSyncFolderPath, getMediaTracks, getPaths, getSimularPaths, loadFile, loadShowsAsync, locateMediaFile, openInSystem, readExifData, readFile, readFolder, readFolderContent, selectFiles, selectFilesDialog, selectFolder, setMediaSyncFolderPath, writeFile } from "../utils/files"
 import { listGraphicsDevices } from "../utils/gpu"
 import { getMachineId } from "../utils/helpers"
 import { LyricSearch } from "../utils/LyricSearch"
@@ -54,6 +54,7 @@ const electronPlatform: Platform = {
     capabilities: ELECTRON_CAPABILITIES,
     data: {
         getStore: (id) => getStore(id as any),
+        setStore: (id, value) => (_store as any)[id]?.set(value),
         getStoreValue,
         setStoreValue,
         save,
@@ -63,9 +64,12 @@ const electronPlatform: Platform = {
         loadScripture,
         readBiblesFolder,
         getDataFolderRoot,
+        getDataFolderPath,
         getPaths,
         readFile,
-        readFolderContent
+        readFolder,
+        readFolderContent,
+        createFolder: ({ path: folderPath, name }) => createFolder(path.join(folderPath, name))
     },
     isDevelopment: () => !isProd,
     getCachePath: getThumbnailFolderPath,

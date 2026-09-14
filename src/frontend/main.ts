@@ -4,6 +4,7 @@
 import * as Sentry from "@sentry/electron/renderer"
 import "svelte"
 import App from "./App.svelte"
+import { installTransport } from "./IPC/transport"
 import { ERROR_FILTER } from "./utils/common"
 
 // error reporting (production only)
@@ -19,6 +20,10 @@ if (import.meta.env.PROD) {
         }
     })
 }
+
+// Install the renderer/backend adapter before App.svelte starts its IPC-driven
+// startup sequence. Alternative runtimes can provide another implementation.
+installTransport()
 
 const app = new App({ target: document.body })
 

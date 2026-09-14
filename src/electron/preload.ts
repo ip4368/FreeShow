@@ -19,7 +19,9 @@ const storedReceivers: {
     [key: string]: (e: IpcRendererEvent, args: any) => void
 } = {}
 
-contextBridge.exposeInMainWorld("api", {
+// Keep the Electron bridge separate from the renderer-owned backend port. The
+// renderer installs this adapter as window.api during bootstrap.
+contextBridge.exposeInMainWorld("electronAPI", {
     send: (channel: ValidChannels, data: any, id?: string) => {
         if (LOG_MESSAGES && appLoaded && !filteredChannels.includes(channel) && !filteredChannelsData.includes(data?.channel)) console.info("TO ELECTRON [" + channel + "]: ", data)
         // if (useTimeout.includes(channel) && data.channel === lastChannel && data.id) return

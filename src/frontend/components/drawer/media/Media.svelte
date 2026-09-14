@@ -12,7 +12,8 @@
     import { splitPath } from "../../helpers/get"
     import { countFolderMediaItems, getExtension, getFileName, getMediaLayerType, getMediaStyle, getMediaType, isMediaExtension, removeExtension } from "../../helpers/media"
     import { isSocketTransport } from "../../../IPC/transport"
-    import { uploadToServer } from "../../../utils/mediaGateway"
+    import { uploadToServerWithProgress } from "../../../utils/mediaGateway"
+    import { acknowledgeFolderUploads, mediaUploads, queueMediaUploads, uploadsForFolder } from "../../../utils/mediaUpload"
     import { trashPathsWithConfirm } from "../../../utils/trash"
     import { getFirstActiveOutput, setOutput } from "../../helpers/output"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
@@ -34,6 +35,7 @@
     import Folder from "./Folder.svelte"
     import Media from "./MediaCard.svelte"
     import MediaGrid from "./MediaGrid.svelte"
+    import MediaUploadCard from "./MediaUploadCard.svelte"
     import TrashBrowser from "./TrashBrowser.svelte"
     import { loadFromPixabay } from "./pixabay"
     import { loadFromUnsplash } from "./unsplash"
@@ -207,26 +209,39 @@
     // upload into the current server folder (remote clients can't drag in local files)
     const remoteLibrary = isSocketTransport()
     let uploadInput: HTMLInputElement
-    let uploading = ""
-    async function uploadFiles(e: Event) {
+    function uploadFiles(e: Event) {
         const files = Array.from((e.target as HTMLInputElement).files || [])
+        if (uploadInput) uploadInput.value = ""
         if (!files.length || !path) return
 
-        let done = 0
-        for (const file of files) {
-            uploading = `${++done}/${files.length}`
-            await uploadToServer(path, file)
-        }
-        uploading = ""
-        if (uploadInput) uploadInput.value = ""
-        requestFiles(path, currentDepth)
+        // placeholders render from the queue below; no refresh here — each landed
+        // upload broadcasts MEDIA_LIBRARY_CHANGED and the watcher below
+        // re-requests this view when the files land
+        queueMediaUploads(path, files, "media", uploadToServerWithProgress)
     }
 
-    // another client (or the expiry sweep) changed the server library: re-request this view
+    // in-flight/failed uploads targeting the currently viewed folder (path is ""
+    // outside folder views, which hides the placeholders there automatically)
+    $: folderUploads = uploadsForFolder($mediaUploads, path, "media")
+    $: activeUploadCount = folderUploads.filter((u) => u.status === "queued" || u.status === "uploading").length
+
+    // uploads prepended as first items; keyed on membership only so the array stays
+    // referentially stable across progress ticks (cards subscribe to the store by id)
+    $: uploadIdsKey = folderUploads.map((u) => u.id).join(",")
+    $: renderItems = renderItemsFor(searchedFiles, uploadIdsKey)
+    function renderItemsFor(files: FileFolder[], idsKey: string): any[] {
+        const uploads = idsKey ? idsKey.split(",").map((uploadId) => ({ isUpload: true, uploadId })) : []
+        return [...uploads, ...files]
+    }
+
+    // another client (or the expiry sweep, or an upload) changed the server library: re-request this view
     let lastLibVersion = 0
     $: if ($mediaLibraryVersion.n > lastLibVersion) {
         lastLibVersion = $mediaLibraryVersion.n
         if (active !== "trash" && active !== "online" && active !== "inputs" && !isProviderSection) {
+            // the re-request lists freshly landed uploads: drop their lingering
+            // placeholders now so they don't double with the real files
+            acknowledgeFolderUploads(path, "media")
             prevActive = ""
             updateContent()
         }
@@ -648,12 +663,14 @@
             </div>
         {:else if active === "trash"}
             <TrashBrowser kind="media" />
-        {:else if searchedFiles.length}
+        {:else if searchedFiles.length || folderUploads.length}
             <div class="context #media" style="display: contents;">
                 {#key searchedFiles}
                     {#if $mediaOptions.mode === "grid"}
-                        <MediaGrid items={searchedFiles} columns={$mediaOptions.columns} let:item>
-                            {#if item.isFolder}
+                        <MediaGrid items={renderItems} columns={$mediaOptions.columns} let:item>
+                            {#if item.isUpload}
+                                <MediaUploadCard uploadId={item.uploadId} mode="grid" />
+                            {:else if item.isFolder}
                                 <Folder
                                     name={item.name}
                                     path={item.path}
@@ -670,8 +687,10 @@
                             {/if}
                         </MediaGrid>
                     {:else}
-                        <VirtualList items={searchedFiles} let:item={file}>
-                            {#if file.isFolder}
+                        <VirtualList items={renderItems} let:item={file}>
+                            {#if file.isUpload}
+                                <MediaUploadCard uploadId={file.uploadId} mode="list" />
+                            {:else if file.isFolder}
                                 <Folder name={file.name} path={file.path} mode={$mediaOptions.mode} on:open={(e) => (path = e.detail)} />
                             {:else}
                                 <Media credits={file.credits || {}} thumbnail={$mediaOptions.mode !== "list"} name={file.name || ""} path={file.path} loadFullImage={$mediaOptions.columns < 3} type={getMediaType(file.extension || getExtension(file.name))} shiftRange={mediaFilesOnly.map((a) => ({ ...a, type: getMediaType(getExtension(a.name)), name: removeExtension(a.name) }))} {active} />
@@ -782,9 +801,9 @@
         <!-- upload into the current SERVER folder (remote clients have no local file access) -->
         {#if remoteLibrary && path && !notFolders.includes(active || "")}
             <input bind:this={uploadInput} type="file" multiple accept="image/*,video/*,audio/*" style="display: none;" on:change={uploadFiles} />
-            <MaterialButton title="Upload files" disabled={!!uploading} on:click={() => uploadInput?.click()}>
+            <MaterialButton title="media.upload_files" on:click={() => uploadInput?.click()}>
                 <Icon id="upload" white />
-                {#if uploading}<span style="font-size: 0.8em;margin-inline-start: 6px;">{uploading}</span>{/if}
+                {#if activeUploadCount}<span style="font-size: 0.8em;margin-inline-start: 6px;">{activeUploadCount}</span>{/if}
             </MaterialButton>
         {/if}
 

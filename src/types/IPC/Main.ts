@@ -252,7 +252,7 @@ export interface MainReturnPayloads {
     [Main.TRASH_EMPTY]: { deleted: string[]; paths: string[]; manifestError?: string }
     [Main.TRASH_LIST]: { entries: TrashEntryData[]; totalSize: number; swept: string[]; v?: number }
     [Main.MEDIA_USAGE]: { usage: Record<string, MediaUsageRef[]>; missing: TrashFailureData[]; summary: { files: number; usedFiles: number } }
-    [Main.MEDIA_LIBRARY_CHANGED]: { kind: "trashed" | "restored" | "deleted" | "emptied" | "expired"; ids?: string[]; paths?: string[]; v?: number }
+    [Main.MEDIA_LIBRARY_CHANGED]: { kind: "uploaded" | "trashed" | "restored" | "deleted" | "emptied" | "expired"; ids?: string[]; paths?: string[]; v?: number }
     [Main.READ_FILE]: { content: string }
     // SYNC
     [Main.CAN_SYNC]: Promise<boolean>

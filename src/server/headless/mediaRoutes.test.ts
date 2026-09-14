@@ -121,6 +121,31 @@ describe("media upload /media/upload", () => {
     })
 })
 
+describe("media upload onUpload callback", () => {
+    it("fires with the sandbox-relative path on success, never on rejection", async () => {
+        const seen: string[] = []
+        const app = express()
+        registerMediaRoutes(app, { onUpload: (rel) => seen.push(rel) })
+        const srv = await new Promise<Server>((resolve) => {
+            const s = app.listen(0, () => resolve(s))
+        })
+        try {
+            const port = (srv.address() as AddressInfo).port
+            const post = (query: string, body: string) => fetch(`http://localhost:${port}/media/upload?${query}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body })
+
+            expect((await post("path=&name=live.png", "DATA")).status).toBe(200)
+            expect(seen).toEqual(["live.png"])
+
+            // rejected uploads change nothing, so no broadcast hook
+            expect((await post("path=&name=bad.txt", "x")).status).toBe(415)
+            expect((await post("path=../../escape&name=evil.png", "x")).status).toBe(403)
+            expect(seen).toEqual(["live.png"])
+        } finally {
+            srv.close()
+        }
+    })
+})
+
 describe("media gateway auth", () => {
     it("requires the token when one is configured", async () => {
         setAuthToken("secret")

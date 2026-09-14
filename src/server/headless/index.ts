@@ -111,7 +111,12 @@ export function startHeadlessServer(args: CliArgs = {}) {
     // access is still gated by the auth token. Tighten origin for production if needed.
     const io = new Server(server, { maxHttpBufferSize: 1e8, cors: { origin: "*" } }) // 100MB for larger payloads
 
-    registerHttpRoutes(app)
+    registerHttpRoutes(app, {
+        // uploads arrive over HTTP (not the socket), so the route can't broadcast
+        // itself — bridge each landed upload into the same live-refresh channel
+        // the trash mutations use (mirrors the sweep callback below)
+        onUpload: (rel) => io.emit("MAIN", { data: { channel: "MEDIA_LIBRARY_CHANGED", data: { kind: "uploaded", paths: [rel], v: getMediaLibraryVersion() } } })
+    })
 
     io.use(socketAuth)
     io.on("connection", (socket) => registerClient(io, socket))

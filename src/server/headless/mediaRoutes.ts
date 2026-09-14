@@ -124,7 +124,12 @@ export function pipeFile(req: Request, res: Response, filePath: string, options?
     stream.pipe(res)
 }
 
-export function registerMediaRoutes(app: Express) {
+export interface MediaRouteOptions {
+    /** Called with the sandbox-relative path after a successful upload (for live broadcasts). */
+    onUpload?: (relPath: string) => void
+}
+
+export function registerMediaRoutes(app: Express, options: MediaRouteOptions = {}) {
     app.get("/media", httpAuth, (req: Request, res: Response) => {
         const resolved = resolveMediaFile(req.query.path)
         if ("status" in resolved) return void res.status(resolved.status).send(resolved.message)
@@ -243,7 +248,15 @@ export function registerMediaRoutes(app: Express) {
             return void res.status(500).send("write failed")
         }
         bumpMediaLibraryVersion()
+        const rel = toSandboxRelative(target)
+        // live-refresh every client (without this only the epoch file changes and
+        // nobody re-requests the folder — the upload would stay invisible)
+        try {
+            options.onUpload?.(rel)
+        } catch (err) {
+            console.error("Upload broadcast failed:", rel, err)
+        }
 
-        return void res.json({ path: toSandboxRelative(target), name })
+        return void res.json({ path: rel, name })
     })
 }

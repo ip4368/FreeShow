@@ -14,7 +14,7 @@ import { _getVariableValue, getDynamicValue } from "../components/edit/scripts/i
 import { clone, keysToID } from "../components/helpers/array"
 import { addDrawerFolder } from "../components/helpers/dropActions"
 import { history } from "../components/helpers/history"
-import { captureCanvas, getExtension, getFileName, removeExtension, setMediaTracks } from "../components/helpers/media"
+import { captureCanvas, getExtension, getFileName, invalidateMediaPaths, removeExtension, setMediaTracks } from "../components/helpers/media"
 import { getActiveOutputs } from "../components/helpers/output"
 import { loadShows, saveTextCache } from "../components/helpers/setShow"
 import { checkName, getGlobalGroup, getLabelId } from "../components/helpers/show"
@@ -61,6 +61,7 @@ import {
     lessonsLoaded,
     media,
     mediaDownloads,
+    mediaLibraryVersion,
     outputs,
     overlays,
     pdfImports,
@@ -91,7 +92,7 @@ import { setupCloudSync } from "../utils/cloudSync"
 import { newToast } from "../utils/common"
 import { translateText } from "../utils/language"
 import { confirmCustom } from "../utils/popup"
-import { isCachedLocalPath } from "../utils/remoteMediaCache"
+import { forgetLocalMediaMappings, isCachedLocalPath, noteMediaLibraryVersion } from "../utils/remoteMediaCache"
 import { initializeClosing, saveComplete } from "../utils/save"
 import { invalidateSearchIndex } from "../utils/searchFast"
 import { updateSettings, updateSyncedSettings, updateThemeValues } from "../utils/updateSettings"
@@ -143,6 +144,16 @@ export const mainResponses: MainResponses = {
     [Main.TEMPLATES]: (a) => templates.set(a),
     [Main.EVENTS]: (a) => events.set(a),
     [Main.MEDIA]: (a) => media.set(a),
+    // server trash changed (any client, incl. the expiry sweep): evict stale
+    // resolutions/mappings, then poke drawers + trash views to refresh
+    [Main.MEDIA_LIBRARY_CHANGED]: (a) => {
+        if (a?.paths?.length) {
+            forgetLocalMediaMappings(a.paths)
+            invalidateMediaPaths(a.paths)
+        }
+        noteMediaLibraryVersion(a?.v)
+        mediaLibraryVersion.update((v) => ({ kind: a?.kind || "", n: v.n + 1 }))
+    },
     [Main.THEMES]: (a) => {
         themes.set(Object.keys(a).length ? a : clone(defaultThemes))
 

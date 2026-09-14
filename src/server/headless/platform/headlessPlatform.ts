@@ -55,7 +55,11 @@ export const headlessPlatform: Platform = {
     getCachePath: () => headlessPersistence.getDataFolderPath("onlineMedia"),
     getVersion: getAppVersion,
     getOS: () => ({ platform: process.platform, name: os.hostname(), arch: process.arch }),
-    getDeviceId: () => createHash("sha256").update(os.hostname() + os.platform()).digest("hex").slice(0, 16),
+    getDeviceId: () =>
+        createHash("sha256")
+            .update(os.hostname() + os.platform())
+            .digest("hex")
+            .slice(0, 16),
     getDeviceName: () => os.hostname(),
     getLocalIPs,
     checkRamUsage: () => ({ performanceMode: false })

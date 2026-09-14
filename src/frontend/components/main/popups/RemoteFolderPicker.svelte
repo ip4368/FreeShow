@@ -70,7 +70,6 @@
         addDrawerFolder({ path: currentPath }, type)
         activePopup.set(null)
     }
-
 </script>
 
 <div class="picker">

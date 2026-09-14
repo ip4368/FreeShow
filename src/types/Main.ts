@@ -491,6 +491,7 @@ export type Popups =
     | "cleaning_utility"
     | "pco_picker"
     | "sync_folders"
+    | "remote_folder"
     | "node_options"
     | "ai_model_manager"
     | "ai_chat"
@@ -502,4 +503,3 @@ export type DefaultProjectNames = "date" | "today" | "sunday" | "week" | "custom
 //   id: null | SelectIds
 //   data: null | number
 // }
-

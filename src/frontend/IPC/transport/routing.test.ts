@@ -9,6 +9,12 @@ describe("hybrid transport routing", () => {
         }
     })
 
+    it("routes server trash channels to the remote server", () => {
+        for (const sub of ["TRASH_FILES", "TRASH_RESTORE", "TRASH_DELETE", "TRASH_EMPTY", "TRASH_LIST", "MEDIA_USAGE"]) {
+            expect(routeChannel("MAIN", sub)).toBe("remote")
+        }
+    })
+
     it("keeps hardware / machine channels local (incl. STAGE display config)", () => {
         for (const sub of ["SETTINGS", "STAGE", "GET_SCREENS", "GET_DISPLAYS", "OUTPUT", "PRESENTATION_CONTROL", "CAPTURE_SLIDE", "GET_MIDI_OUTPUTS", "HISTORY", "CACHE", "USAGE", "URL", "SYSTEM_OPEN", "READ_FILE", "START", "SPOTIFY_COMMAND"]) {
             expect(routeChannel("MAIN", sub)).toBe("local")

@@ -26,6 +26,32 @@ import type { SaveData, SaveListSyncedSettings } from "./../Save"
 export { MAIN, Main } from "./channels"
 import { Main } from "./channels"
 
+// Trash payloads (server-side trash for remote drawer deletes; see src/server/headless/data/trash.ts)
+export interface TrashEntryData {
+    id: string
+    name: string
+    /** sandbox-relative original path */
+    originalPath: string
+    isFolder: boolean
+    /** epoch ms of deletion (server clock) */
+    deletedAt: number
+    size: number
+    deletedBy?: string
+}
+export interface TrashFailureData {
+    path: string
+    reason: string
+}
+export interface MediaUsageRef {
+    kind: "show" | "project" | "overlay" | "template" | "playlist"
+    id: string
+    name: string
+    /** show refs only: projects containing the show */
+    projects?: { id: string; name: string }[]
+    /** media-map-only (orphan) reference: not reachable from any slide/layout */
+    weak?: boolean
+}
+
 export interface MainSendPayloads {
     // DEV
     [Main.LOG]: any
@@ -92,6 +118,9 @@ export interface MainSendPayloads {
     [Main.READ_FOLDER]: { path: string | string[]; depth?: number; generateThumbnails?: boolean; captureFolderContent?: boolean }
     [Main.READ_FILE]: { path: string }
     [Main.CREATE_FOLDER]: { path: string; name: string }
+    [Main.TRASH_FILES]: { paths: string[]; deletedBy?: string }
+    [Main.TRASH_RESTORE]: { ids: string[] }
+    [Main.TRASH_DELETE]: { ids: string[] }
     [Main.OPEN_FOLDER]: { channel: string; title?: string; path?: string }
     [Main.OPEN_FILE]: { id: string; channel: string; title?: string; filter: any; multiple: boolean; read?: boolean }
     // SYNC
@@ -217,6 +246,13 @@ export interface MainReturnPayloads {
     [Main.FILE_INFO]: { path: string; stat: Stats; extension: string; folder: boolean } | null
     [Main.READ_FOLDER]: Promise<{ [key: string]: FileFolder }>
     [Main.CREATE_FOLDER]: string
+    [Main.TRASH_FILES]: { trashed: TrashEntryData[]; failed: TrashFailureData[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_RESTORE]: { restored: { id: string; path: string; originalPath: string; renamed: boolean }[]; failed: TrashFailureData[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_DELETE]: { deleted: string[]; failed: TrashFailureData[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_EMPTY]: { deleted: string[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_LIST]: { entries: TrashEntryData[]; totalSize: number; swept: string[]; v?: number }
+    [Main.MEDIA_USAGE]: { usage: Record<string, MediaUsageRef[]>; missing: TrashFailureData[]; summary: { files: number; usedFiles: number } }
+    [Main.MEDIA_LIBRARY_CHANGED]: { kind: "trashed" | "restored" | "deleted" | "emptied" | "expired"; ids?: string[]; paths?: string[]; v?: number }
     [Main.READ_FILE]: { content: string }
     // SYNC
     [Main.CAN_SYNC]: Promise<boolean>

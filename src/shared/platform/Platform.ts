@@ -6,6 +6,15 @@ export interface SaveResult {
     complete: { closeWhenFinished: boolean; customTriggers: any }
 }
 
+export interface TrashAdapter {
+    trashFiles(data: { paths: string[]; deletedBy?: string }): { trashed: any[]; failed: { path: string; reason: string }[]; paths: string[] }
+    restoreTrash(data: { ids: string[] }): { restored: { id: string; path: string; originalPath: string; renamed: boolean }[]; failed: { path: string; reason: string }[]; paths: string[]; manifestError?: string }
+    deleteTrash(data: { ids: string[] }): { deleted: string[]; failed: { path: string; reason: string }[]; paths: string[]; manifestError?: string }
+    emptyTrash(): { deleted: string[]; paths: string[]; manifestError?: string }
+    listTrash(): { entries: any[]; totalSize: number; swept: string[]; v: number }
+    findMediaUsage(data: { paths: string[]; includeOrphans?: boolean }): { usage: Record<string, any[]>; missing: { path: string; reason: string }[]; summary: { files: number; usedFiles: number } }
+}
+
 export interface PersistenceAdapter {
     getStore(id: string): any
     setStore(id: string, value: any): void
@@ -31,6 +40,7 @@ export interface PersistenceAdapter {
 
     restoreEntries?(entries: { name: string; content: string }[]): RestoreResult
     buildBackupZip?(): Promise<Buffer>
+    trash?: TrashAdapter
 }
 
 /** Result of applying a restore: which library stores changed (for live broadcast) + status. */

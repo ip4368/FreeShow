@@ -121,6 +121,17 @@ export function createPortableResponses(platform: Platform) {
                   },
                   [Main.BACKUP_DOWNLOAD]: () => data.buildBackupZip!()
               }
+            : {}),
+
+        ...(data.trash
+            ? {
+                  [Main.TRASH_FILES]: (value: any) => data.trash!.trashFiles(value),
+                  [Main.TRASH_RESTORE]: (value: any) => data.trash!.restoreTrash(value),
+                  [Main.TRASH_DELETE]: (value: any) => data.trash!.deleteTrash(value),
+                  [Main.TRASH_EMPTY]: () => data.trash!.emptyTrash(),
+                  [Main.TRASH_LIST]: () => data.trash!.listTrash(),
+                  [Main.MEDIA_USAGE]: (value: any) => data.trash!.findMediaUsage(value)
+              }
             : {})
     } satisfies PortableResponses
 }

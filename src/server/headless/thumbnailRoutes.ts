@@ -40,11 +40,7 @@ async function videoThumbnail(filePath: string, size: number): Promise<Buffer | 
     try {
         // grab a frame a little into the clip (avoids black/blank first frames),
         // scaled by ffmpeg, then normalised to webp by sharp
-        const { stdout } = await execFileAsync(
-            ffmpeg,
-            ["-ss", "1", "-i", filePath, "-frames:v", "1", "-vf", `scale=${size}:${size}:force_original_aspect_ratio=decrease`, "-f", "image2pipe", "-vcodec", "png", "-"],
-            { encoding: "buffer", maxBuffer: 64 * 1024 * 1024, timeout: 20000, windowsHide: true }
-        )
+        const { stdout } = await execFileAsync(ffmpeg, ["-ss", "1", "-i", filePath, "-frames:v", "1", "-vf", `scale=${size}:${size}:force_original_aspect_ratio=decrease`, "-f", "image2pipe", "-vcodec", "png", "-"], { encoding: "buffer", maxBuffer: 64 * 1024 * 1024, timeout: 20000, windowsHide: true })
         if (!stdout?.length) return null
         return await sharp(stdout).webp({ quality: 80 }).toBuffer()
     } catch (err) {
@@ -110,9 +106,7 @@ export function registerThumbnailRoutes(app: Express) {
         }
 
         try {
-            const buffer = isVideo
-                ? await videoThumbnail(filePath, size)
-                : await sharp(filePath).rotate().resize(size, size, { fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toBuffer()
+            const buffer = isVideo ? await videoThumbnail(filePath, size) : await sharp(filePath).rotate().resize(size, size, { fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toBuffer()
 
             // no ffmpeg (or extraction failed) -> stream the original so the client shows something
             if (!buffer) {

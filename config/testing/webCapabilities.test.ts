@@ -62,6 +62,7 @@ test("server advertises headless capabilities", async () => {
     // things a browser genuinely cannot do on the server's machine
     expect(capabilities.outputWindows).toBe(false)
     expect(capabilities.ndi).toBe(false)
+    expect(capabilities.omt).toBe(false)
     expect(capabilities.blackmagic).toBe(false)
     expect(capabilities.screenCapture).toBe(false)
     expect(capabilities.nativeDialogs).toBe(false)
@@ -108,6 +109,7 @@ test("web client hides desktop-only UI", async ({ page }) => {
 
     // hardware capture inputs must be hidden in the browser
     expect(inputTabs).not.toContain("NDI")
+    expect(inputTabs).not.toContain("OMT")
     expect(inputTabs).not.toContain("Blackmagic")
     expect(inputTabs).not.toContain("Screens")
 

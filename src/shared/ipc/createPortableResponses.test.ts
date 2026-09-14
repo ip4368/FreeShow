@@ -64,4 +64,27 @@ describe("createPortableResponses", () => {
         expect(responses[Main.READ_FILE]?.({ path: "/data/file" })).toEqual({ content: "contents" })
         expect(data.readFile).toHaveBeenCalledWith("/data/file")
     })
+
+    it("only registers optional server feature handlers when adapters exist", async () => {
+        const { data, platform } = createPlatform()
+        expect(createPortableResponses(platform)[Main.TRASH_LIST]).toBeUndefined()
+        expect(createPortableResponses(platform)[Main.BACKUP_DOWNLOAD]).toBeUndefined()
+
+        data.trash = {
+            trashFiles: vi.fn(),
+            restoreTrash: vi.fn(),
+            deleteTrash: vi.fn(),
+            emptyTrash: vi.fn(),
+            listTrash: vi.fn(() => ({ entries: [], totalSize: 0, swept: [], v: 1 })),
+            findMediaUsage: vi.fn()
+        }
+        data.backup = {
+            restoreEntries: vi.fn(),
+            buildBackupZip: vi.fn(async () => Buffer.from("backup"))
+        }
+
+        const responses = createPortableResponses(platform)
+        expect(responses[Main.TRASH_LIST]?.()).toEqual({ entries: [], totalSize: 0, swept: [], v: 1 })
+        expect(await responses[Main.BACKUP_DOWNLOAD]?.()).toEqual(Buffer.from("backup"))
+    })
 })

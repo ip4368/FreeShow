@@ -1,6 +1,6 @@
 import { Main } from "../../types/IPC/channels"
 import { unzipBuffer } from "../data/zip"
-import type { PersistenceAdapter, Platform, RestoreResult } from "../platform/Platform"
+import type { PersistenceAdapter, Platform, RestoreResult, TrashAdapter } from "../platform/Platform"
 
 type CorePortableChannel =
     | Main.LOG
@@ -56,6 +56,12 @@ export type PortableHandler<ID extends CorePortableChannel> = ID extends keyof P
 interface OptionalPortableResponses {
     [Main.RESTORE_UPLOAD]?: (value: ArrayBuffer | Uint8Array) => Promise<RestoreResult>
     [Main.BACKUP_DOWNLOAD]?: () => Promise<Buffer>
+    [Main.TRASH_FILES]?: TrashAdapter["trashFiles"]
+    [Main.TRASH_RESTORE]?: TrashAdapter["restoreTrash"]
+    [Main.TRASH_DELETE]?: TrashAdapter["deleteTrash"]
+    [Main.TRASH_EMPTY]?: TrashAdapter["emptyTrash"]
+    [Main.TRASH_LIST]?: TrashAdapter["listTrash"]
+    [Main.MEDIA_USAGE]?: TrashAdapter["findMediaUsage"]
 }
 
 export type PortableResponses = { [ID in CorePortableChannel]: PortableHandler<ID> } & OptionalPortableResponses
@@ -107,19 +113,19 @@ export function createPortableResponses(platform: Platform) {
         [Main.READ_FILE]: (value) => ({ content: data.readFile(value.path) }),
         [Main.CREATE_FOLDER]: (value) => data.createFolder(value),
 
-        ...(data.restoreEntries && data.buildBackupZip
+        ...(data.backup
             ? {
                   [Main.RESTORE_UPLOAD]: async (value: any) => {
                       try {
                           const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value)
                           const entries = await unzipBuffer(buffer)
-                          return data.restoreEntries!(entries)
+                          return data.backup!.restoreEntries(entries)
                       } catch (err) {
                           console.error("Failed to restore upload:", err)
                           return { finished: false, error: (err as Error)?.message || "restore_failed" }
                       }
                   },
-                  [Main.BACKUP_DOWNLOAD]: () => data.buildBackupZip!()
+                  [Main.BACKUP_DOWNLOAD]: () => data.backup!.buildBackupZip()
               }
             : {}),
 

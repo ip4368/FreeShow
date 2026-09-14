@@ -357,8 +357,7 @@ export const headlessPersistence: PersistenceAdapter = {
     getDataFolderRoot,
     getDataFolderPath,
     getPaths: () => ({}),
-    restoreEntries,
-    buildBackupZip,
+    backup: { restoreEntries, buildBackupZip },
     trash: {
         trashFiles,
         restoreTrash: restoreTrashFiles,

@@ -7,6 +7,8 @@ import { fadeinAllPlayingAudio, fadeoutAllPlayingAudio } from "../../../audio/au
 import { AudioInputCapture } from "../../../audio/routing/audioInputCapture"
 import { requestMain } from "../../../IPC/main"
 import { media, outputs, playerVideos, playingVideos, playingVideoState, special, transitionData } from "../../../stores"
+import { isRemoteMedia } from "../../../utils/mediaGateway"
+import { resolveProbePath } from "../../../utils/remoteMediaCache"
 import { playFolder } from "../../../utils/shortcuts"
 import { customActionActivation } from "../../actions/actions"
 import { getVimeoData, getYouTubeData } from "../../drawer/player/playerHelper"
@@ -714,7 +716,8 @@ export class VideoPlayer {
     static async getReplayGainMultiplier(path: string): Promise<number> {
         if (this.replayGainCache.has(path)) return this.replayGainCache.get(path) || 1
         try {
-            const audioMetadata = await requestMain(Main.READ_AUDIO_METADATA, { filePath: path })
+            const probePath = isRemoteMedia() ? await resolveProbePath(path).catch(() => null) : path
+            const audioMetadata = probePath ? await requestMain(Main.READ_AUDIO_METADATA, { filePath: probePath }) : null
             const mult = audioMetadata?.replayGainMultiplier || 1
             this.replayGainCache.set(path, mult)
             return mult

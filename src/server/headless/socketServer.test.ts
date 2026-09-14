@@ -101,3 +101,31 @@ describe("headless socketServer desktop compatibility", () => {
         await expect(reply).resolves.toBe(false)
     })
 })
+
+describe("headless socketServer TRASH_FILES", () => {
+    it("replies to the actor and broadcasts MEDIA_LIBRARY_CHANGED to every client", async () => {
+        fs.mkdirSync(path.join(tmp, "Media"), { recursive: true })
+        fs.writeFileSync(path.join(tmp, "Media", "doomed.png"), "DATA")
+
+        const a = await connect()
+        const b = await connect()
+
+        const aReply = onceMain(a, "TRASH_FILES")
+        const aChanged = onceMain(a, "MEDIA_LIBRARY_CHANGED")
+        const bChanged = onceMain(b, "MEDIA_LIBRARY_CHANGED")
+
+        sendMain(a, "TRASH_FILES", { paths: ["Media/doomed.png"] }, "trash1")
+
+        const [reply, aBroadcast, bBroadcast] = await Promise.all([aReply, aChanged, bChanged])
+
+        expect(reply.trashed).toHaveLength(1)
+        expect(reply.trashed[0]).toMatchObject({ originalPath: "Media/doomed.png" })
+        expect(reply.failed).toEqual([])
+        // broadcasts carry the library epoch so reconnecting clients can reconcile
+        expect(aBroadcast).toMatchObject({ kind: "trashed", paths: ["Media/doomed.png"] })
+        expect(bBroadcast).toMatchObject({ kind: "trashed", paths: ["Media/doomed.png"] })
+        expect(typeof aBroadcast.v).toBe("number")
+        expect(aBroadcast.v).toBe(bBroadcast.v)
+        expect(fs.existsSync(path.join(tmp, "Media", "doomed.png"))).toBe(false)
+    })
+})

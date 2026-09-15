@@ -22,7 +22,7 @@ import { get } from "svelte/store"
 import * as Y from "yjs"
 import { applyShowDiffToYDoc, yDocToShow } from "../../../shared/crdt/showYjs"
 import { YJS } from "../../../types/Channels"
-import { activeShow, showsCache } from "../../stores"
+import { activeShow, connectionStatus, showsCache } from "../../stores"
 
 const REMOTE = "remote"
 const LOCAL = "local"
@@ -82,6 +82,29 @@ export function initCrdtClient() {
         applyShowDiffToYDoc(entry.doc, entry.prev, next, LOCAL)
         entry.prev = clone(next)
     })
+
+    // reconnect after a drop: re-open every doc so the server re-sends its
+    // state and Yjs merges (no-op on the initial connect)
+    let wasAway = false
+    connectionStatus.subscribe((status) => {
+        if (status === "disconnected" || status === "reconnecting") {
+            wasAway = true
+            return
+        }
+        if (status === "connected" && wasAway) {
+            wasAway = false
+            rejoinCrdtDocs()
+        }
+    })
+}
+
+/**
+ * Re-request server state for every open doc (reconnect). The server replies
+ * with its full state, which Y.applyUpdate merges into the existing doc —
+ * offline local edits are preserved by CRDT merge, not clobbered.
+ */
+export function rejoinCrdtDocs() {
+    for (const showId of entries.keys()) requestOpen(showId)
 }
 
 function openShowDoc(showId: string) {

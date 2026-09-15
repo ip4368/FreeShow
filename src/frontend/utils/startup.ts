@@ -18,7 +18,7 @@ import { setupCloudSync } from "./cloudSync"
 import { storeSubscriber } from "./listeners"
 import { autoOpenLastUsedProfile, openProfileByName } from "./profile"
 import { receiveOUTPUTasOUTPUT, remoteListen, setupMainReceivers } from "./receivers"
-import { destroy, receive, send } from "./request"
+import { receive, send } from "./request"
 import { save, unsavedUpdater } from "./save"
 
 let initialized = false
@@ -34,9 +34,15 @@ export async function startup() {
     window.api.receive(
         STARTUP,
         (msg) => {
-            if (initialized || msg.channel !== "TYPE") return
-            initialized = true // only call this once per window
-            destroy(STARTUP, "startup")
+            if (msg.channel !== "TYPE") return
+            // repeat STARTUP (the transport re-requests it on every reconnect):
+            // refresh capabilities, then return — never re-run startupMain
+            // (co-editing docs + the media cache rejoin via connectionStatus)
+            if (initialized) {
+                if (msg.capabilities) capabilities.set(msg.capabilities)
+                return
+            }
+            initialized = true // only run full startup once per window
 
             // backend advertises which platform features are available (headless/web hides desktop-only ones)
             if (msg.capabilities) capabilities.set(msg.capabilities)

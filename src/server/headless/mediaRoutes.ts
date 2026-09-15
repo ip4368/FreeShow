@@ -18,12 +18,59 @@ import type { Express, Request, Response } from "express"
 import express from "express"
 import fs from "fs"
 import path from "path"
+import type { Readable } from "stream"
 import { httpAuth } from "./auth"
 import { isTrashRel, resolveInSandbox, toSandboxRelative } from "./data/dataPaths"
 import { bumpMediaLibraryVersion } from "./data/libraryVersion"
 import { getMediaHash, peekCachedHash } from "./mediaHash"
 
-const MAX_UPLOAD_BYTES = "2gb"
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024 // 2gb — enforced while streaming, never buffered
+
+/**
+ * Stream a request body straight to a file (uploads must not sit in RAM:
+ * a 2gb express.raw buffer per upload is a trivial OOM). Resolves with the
+ * byte count; rejects with an `overLimit` error past maxBytes, cleaning up
+ * the partial file in every failure mode.
+ */
+export function streamRequestBodyToFile(stream: Readable, tmpPath: string, maxBytes: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const out = fs.createWriteStream(tmpPath)
+        let bytes = 0
+        let settled = false
+        const fail = (err: Error) => {
+            if (settled) return
+            settled = true
+            try {
+                stream.destroy()
+            } catch {
+                // already gone
+            }
+            out.destroy()
+            fs.rmSync(tmpPath, { force: true })
+            reject(err)
+        }
+        out.on("error", fail)
+        stream.on("error", fail)
+        stream.on("data", (chunk: Buffer) => {
+            bytes += chunk.length
+            if (bytes > maxBytes) {
+                const err = new Error(`upload exceeds ${maxBytes} bytes`) as Error & { overLimit: boolean }
+                err.overLimit = true
+                fail(err)
+                return
+            }
+            if (!out.write(chunk)) {
+                stream.pause()
+                out.once("drain", () => stream.resume())
+            }
+        })
+        stream.on("end", () => {
+            if (settled) return
+            settled = true
+            out.end(() => resolve(bytes))
+        })
+    })
+}
 
 const MEDIA_MIME: { [ext: string]: string } = {
     // images
@@ -223,7 +270,7 @@ export function registerMediaRoutes(app: Express, options: MediaRouteOptions = {
     // Upload a media file into a sandboxed folder:
     //   POST /media/upload?path=<relative folder>&name=<file name>   (raw body = file bytes)
     // Same guards as reads: token auth, sandbox confinement, media-extension allowlist.
-    app.post("/media/upload", httpAuth, express.raw({ type: "*/*", limit: MAX_UPLOAD_BYTES }), (req: Request, res: Response) => {
+    app.post("/media/upload", httpAuth, async (req: Request, res: Response) => {
         const rawName = typeof req.query.name === "string" ? req.query.name : ""
         const name = path.basename(rawName).trim() // strip any directory component
         if (!name || name.includes("\0")) return void res.status(400).send("missing name")
@@ -237,13 +284,26 @@ export function registerMediaRoutes(app: Express, options: MediaRouteOptions = {
         const target = resolveInSandbox(path.join(toSandboxRelative(folder), name))
         if (!target) return void res.status(403).send("forbidden")
 
-        const body = req.body as Buffer
-        if (!Buffer.isBuffer(body) || !body.length) return void res.status(400).send("empty body")
-
+        // stream to a sibling tmp file (same filesystem, so the rename is atomic)
+        // instead of buffering the whole body in RAM
+        const tmpPath = `${target}.upload-${process.pid}-${Date.now()}`
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        let bytes = 0
         try {
-            fs.mkdirSync(path.dirname(target), { recursive: true })
-            fs.writeFileSync(target, body)
+            bytes = await streamRequestBodyToFile(req, tmpPath, MAX_UPLOAD_BYTES)
+        } catch (err: any) {
+            if (err?.overLimit) return void res.status(413).send("upload too large")
+            console.error("Upload failed:", target, err)
+            return void res.status(500).send("write failed")
+        }
+        if (!bytes) {
+            fs.rmSync(tmpPath, { force: true })
+            return void res.status(400).send("empty body")
+        }
+        try {
+            fs.renameSync(tmpPath, target)
         } catch (err) {
+            fs.rmSync(tmpPath, { force: true })
             console.error("Upload failed:", target, err)
             return void res.status(500).send("write failed")
         }

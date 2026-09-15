@@ -5,9 +5,10 @@ import type { Server } from "http"
 import os from "os"
 import path from "path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { Readable } from "stream"
 import { setAuthToken } from "./auth"
 import { setDataRoot } from "./data/dataPaths"
-import { registerMediaRoutes } from "./mediaRoutes"
+import { registerMediaRoutes, streamRequestBodyToFile } from "./mediaRoutes"
 
 let server: Server
 let base = ""
@@ -118,6 +119,27 @@ describe("media upload /media/upload", () => {
         expect(res.status).toBe(200)
         expect(fs.existsSync(path.join(tmpDir, "evil.png"))).toBe(true)
         expect(fs.existsSync(path.join(tmpDir, "..", "..", "evil.png"))).toBe(false)
+    })
+
+    it("leaves no tmp files behind after an upload", async () => {
+        await upload("path=&name=clean.png", "DATA")
+        expect(fs.readdirSync(tmpDir).filter((f) => f.includes(".upload-"))).toEqual([])
+    })
+})
+
+describe("streamRequestBodyToFile (uploads never buffer in RAM)", () => {
+    it("streams chunks to disk and resolves the byte count", async () => {
+        const tmpFile = path.join(tmpDir, "streamed.bin")
+        const bytes = await streamRequestBodyToFile(Readable.from([Buffer.from("ab"), Buffer.from("cdef")]), tmpFile, 1024)
+        expect(bytes).toBe(6)
+        expect(fs.readFileSync(tmpFile, "utf8")).toBe("abcdef")
+    })
+
+    it("rejects past the cap and removes the partial file", async () => {
+        const tmpFile = path.join(tmpDir, "too-big.bin")
+        const err = await streamRequestBodyToFile(Readable.from([Buffer.alloc(16, "x")]), tmpFile, 10).catch((e) => e)
+        expect(err?.overLimit).toBe(true)
+        expect(fs.existsSync(tmpFile)).toBe(false)
     })
 })
 

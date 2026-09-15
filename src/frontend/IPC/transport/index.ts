@@ -7,7 +7,7 @@
 //   2. Desktop with a persisted remote connection   -> Socket.IO to that server (Phase 3 GUI)
 //   3. Otherwise (desktop default)                   -> Electron IPC (preload's window.api)
 
-import { connectionStatus } from "../../stores"
+import { activePage, connectionStatus, settingsTab, toastMessages } from "../../stores"
 import { showWebLogin } from "../../utils/webLogin"
 import { getElectronApi } from "./electronTransport"
 import { createHybridApi } from "./hybridTransport"
@@ -117,6 +117,21 @@ export function setWebToken(token: string) {
  * A full reload is the simplest way back to a clean startup, and matches what
  * ServerConnection.svelte already does on the desktop.
  */
+/**
+ * Hybrid equivalent of handleUnauthorized: without this a rejected token leaves
+ * a permanently dead socket (Socket.IO never retries middleware rejections).
+ * Drop the bad token, toast, and open Connection settings to repair/disconnect.
+ * (Pushes toastMessages directly instead of newToast: utils/common's import
+ * chain leads back here.)
+ */
+function handleHybridUnauthorized() {
+    const remote = getRemoteServerConfig()
+    if (remote) setRemoteServerConfig({ ...remote, token: undefined })
+    toastMessages.update((msgs) => [...msgs, "Remote server rejected the access token — check Connection settings."])
+    activePage.set("settings")
+    settingsTab.set("connection")
+}
+
 function handleUnauthorized() {
     try {
         localStorage.removeItem(WEB_TOKEN_KEY)
@@ -176,7 +191,7 @@ export function installTransport(transport?: BackendTransport) {
     //    machine config -> local Electron IPC. See ./routing.ts for the exact split.
     const remote = getRemoteServerConfig()
     if (remote) {
-        const socket = createSocketApi({ url: remote.url, auth: remote.token ? { token: remote.token } : undefined, onStatus })
+        const socket = createSocketApi({ url: remote.url, auth: remote.token ? { token: remote.token } : undefined, onStatus, onUnauthorized: handleHybridUnauthorized })
         const local = getElectronApi()
         setTransport(local ? createHybridApi(local, socket) : socket)
         return

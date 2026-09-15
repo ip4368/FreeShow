@@ -54,8 +54,16 @@ export function registerClient(io: Server, socket: Socket) {
         const inner = payload?.data
         if (!inner?.channel) return
 
+        // requests (requestMain) carry a listenerId and must always get a reply:
+        // resolving null fails fast instead of hanging until the client timeout.
+        // One-way sends (sendMain) stay silent, like the Electron main.
+        const replyId = payload.listenerId
+        const replyNull = () => {
+            if (replyId) socket.emit("MAIN", { data: { channel: inner.channel, data: null }, listenerId: replyId })
+        }
+
         const handler = (responses as Record<string, (d?: any) => any>)[inner.channel]
-        if (!handler) return // unhandled channel (e.g. Electron-only) -> ignored on headless
+        if (!handler) return replyNull() // unhandled channel (e.g. Electron-only) -> fail fast, don't hang
 
         try {
             // TRASH: reply to the actor, then broadcast to EVERY client (including
@@ -98,10 +106,11 @@ export function registerClient(io: Server, socket: Socket) {
                 return
             }
 
-            if (response === undefined) return
-            socket.emit("MAIN", { data: { channel: inner.channel, data: response }, listenerId: payload.listenerId })
+            if (response === undefined) return replyNull()
+            socket.emit("MAIN", { data: { channel: inner.channel, data: response }, listenerId: replyId })
         } catch (err) {
             console.error(`Headless handler error for ${inner.channel}:`, err)
+            replyNull()
         }
     })
 }

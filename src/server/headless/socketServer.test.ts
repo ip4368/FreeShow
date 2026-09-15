@@ -102,6 +102,53 @@ describe("headless socketServer desktop compatibility", () => {
     })
 })
 
+describe("headless socketServer request/reply fail-fast", () => {
+    // requests (listenerId present) must always get a reply — resolving null
+    // fails fast instead of hanging until the client's 15s timeout
+    function onceMainOrTimeout(socket: ClientSocket, channel: string, ms = 1500): Promise<{ got: boolean; data: any }> {
+        return new Promise((resolve) => {
+            const timer = setTimeout(() => {
+                socket.off("MAIN", handler)
+                resolve({ got: false, data: undefined })
+            }, ms)
+            const handler = (payload: any) => {
+                if (payload?.data?.channel !== channel) return
+                clearTimeout(timer)
+                socket.off("MAIN", handler)
+                resolve({ got: true, data: payload.data.data })
+            }
+            socket.on("MAIN", handler)
+        })
+    }
+
+    it("replies null (instead of hanging) for an unhandled channel", async () => {
+        const a = await connect()
+        const reply = onceMainOrTimeout(a, "DEFINITELY_NOT_A_CHANNEL")
+        sendMain(a, "DEFINITELY_NOT_A_CHANNEL", {}, "noreply1")
+        const { got, data } = await reply
+        expect(got).toBe(true)
+        expect(data).toBeNull()
+    })
+
+    it("replies null (instead of hanging) when a handler throws", async () => {
+        const a = await connect()
+        const reply = onceMainOrTimeout(a, "SHOW")
+        // loadShow dereferences msg.name -> TypeError inside the handler
+        sendMain(a, "SHOW", null, "throw1")
+        const { got, data } = await reply
+        expect(got).toBe(true)
+        expect(data).toBeNull()
+    })
+
+    it("stays silent for one-way sends without a listenerId", async () => {
+        const a = await connect()
+        const reply = onceMainOrTimeout(a, "DEFINITELY_NOT_A_CHANNEL", 400)
+        sendMain(a, "DEFINITELY_NOT_A_CHANNEL", {})
+        const { got } = await reply
+        expect(got).toBe(false)
+    })
+})
+
 describe("headless socketServer TRASH_FILES", () => {
     it("replies to the actor and broadcasts MEDIA_LIBRARY_CHANGED to every client", async () => {
         fs.mkdirSync(path.join(tmp, "Media"), { recursive: true })

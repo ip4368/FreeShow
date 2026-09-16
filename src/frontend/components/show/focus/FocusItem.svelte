@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { ProjectShowRef } from "../../../../types/Projects"
     import { outputs, showsCache } from "../../../stores"
+    import { toRemoteMediaPath } from "../../../utils/remoteMediaCache"
     import { getActiveOutputs } from "../../helpers/output"
     import AudioPreview from "../AudioPreview.svelte"
     import FolderShow from "../folder/FolderShow.svelte"
@@ -18,7 +19,7 @@
 </script>
 
 {#if type === "video" || type === "image" || type === "player"}
-    <div class="outline" class:active={currentOutput?.out?.background?.path === show.id}>
+    <div class="outline" class:active={!!show.id && toRemoteMediaPath(currentOutput?.out?.background?.path || "") === toRemoteMediaPath(show.id)}>
         <MediaPreview projectShow={show} />
     </div>
 {:else if type === "audio"}

@@ -27,6 +27,7 @@ import { drawerTabs } from "../values/tabs"
 import { activeShow } from "./../stores"
 import { hideDisplay, isOutputWindow, togglePanels, triggerFunction } from "./common"
 import { getAccess } from "./profile"
+import { toRemoteMediaPath } from "./remoteMediaCache"
 import { triggerPopupSubmit } from "./popup"
 import { send } from "./request"
 import { save } from "./save"
@@ -502,7 +503,8 @@ export async function togglePlayingMedia(e: Event | null = null, back = false, a
     if (!item || !type) return
     e?.preventDefault()
 
-    const alreadyPlaying = currentlyPlaying === item.id
+    // outputs may carry cache-local paths on hybrid desktops — compare canonical forms
+    const alreadyPlaying = toRemoteMediaPath(currentlyPlaying || "") === toRemoteMediaPath(item.id)
 
     if (type === "video" || type === "image" || type === "player") {
         if (alreadyPlaying) {
@@ -551,7 +553,7 @@ export async function playFolder(path: string, back = false) {
     if (!folderFiles.length) return
 
     const mediaFiles = folderFiles.filter((a) => a.type !== "audio")
-    const playingIndex = mediaFiles.findIndex((a) => a.path === currentlyPlaying)
+    const playingIndex = mediaFiles.findIndex((a) => toRemoteMediaPath(a.path) === toRemoteMediaPath(currentlyPlaying || ""))
     const newMedia = back ? (mediaFiles[playingIndex - 1] ?? mediaFiles[mediaFiles.length - 1]) : (mediaFiles[playingIndex + 1] ?? mediaFiles[0])
     const allFilesIndex = folderFiles.findIndex((a) => a.path === newMedia.path)
 

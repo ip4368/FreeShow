@@ -54,6 +54,8 @@ export interface RestoreResult {
     changed?: Record<string, any>
     /** IDs of shows written by this restore, so callers can invalidate resident CRDT documents. */
     restoredShowIds?: string[]
+    /** Count of bible (.fsb) files written by this restore. */
+    restoredBibles?: number
 }
 
 export interface Platform {

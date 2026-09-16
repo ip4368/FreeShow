@@ -9,6 +9,7 @@
     import { formatBytes } from "../../helpers/bytes"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
+    import BootstrapPublish from "./BootstrapPublish.svelte"
     import InputRow from "../../input/InputRow.svelte"
     import Title from "../../input/Title.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
@@ -197,5 +198,7 @@
         {/if}
 
         <Tip value="Connect to a FreeShow server to load and co-edit its shows. The app reloads when you connect." top={15} />
+
+        <BootstrapPublish />
     {/if}
 {/if}

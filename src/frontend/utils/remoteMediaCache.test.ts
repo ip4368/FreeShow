@@ -26,7 +26,7 @@ vi.mock("../stores", () => {
 })
 
 import { normalizeCacheKey } from "../../shared/media/mediaCacheCore"
-import { clearMediaCacheUI, ensureLocalMedia, isCachedLocalPath, normalizeKey, prefetchRemotePaths, resolveLocalMedia, resolveProbePath } from "./remoteMediaCache"
+import { clearMediaCacheUI, ensureLocalMedia, isCachedLocalPath, normalizeKey, prefetchRemotePaths, resolveLocalMedia, resolveProbePath, resolveRemoteMedia, toRemoteMediaPath } from "./remoteMediaCache"
 
 // localStorage stub (persist/snapshot paths); real browsers share it across windows
 const lsStore = new Map<string, string>()
@@ -205,5 +205,69 @@ describe("background fetch coalescing", () => {
         const prefetchCalls = h.requestMain.mock.calls.filter((c) => c[0] === Main.MEDIA_CACHE_PREFETCH)
         expect(prefetchCalls).toHaveLength(1)
         expect(prefetchCalls[0][1].paths.sort()).toEqual(["Media/miss1.mp4", "Media/miss2.mp4"])
+    })
+})
+
+describe("reverse lookup (cached local path -> remote path)", () => {
+    // Hybrid outputs carry cache-local paths (getMedia resolves through the
+    // cache), while drawers list server-relative paths. Highlight/active
+    // comparisons must canonicalize through this reverse map or the same
+    // show highlights on web but not on hybrid desktop.
+    function hybridWithCached(remotePath: string, localPath: string) {
+        h.socket = true
+        h.remoteConfig = { enabled: true, url: "http://server:5540" }
+        h.requestMain.mockImplementation(async (channel: string) => {
+            if (channel === Main.MEDIA_CACHE_GET) return { cached: true, localPath }
+            return null
+        })
+        return ensureLocalMedia(remotePath)
+    }
+
+    it("returns the remote path for a known cached file", async () => {
+        await hybridWithCached("Media/rev1.mp4", "/cache/dir/rev1.mp4")
+        expect(resolveRemoteMedia("/cache/dir/rev1.mp4")).toBe("Media/rev1.mp4")
+    })
+
+    it("tolerates file:// and separator variants on lookup", async () => {
+        await hybridWithCached("Media/rev2.mp4", "/cache/dir/rev2.mp4")
+        expect(resolveRemoteMedia("file:///cache/dir/rev2.mp4")).toBe("Media/rev2.mp4")
+    })
+
+    it("returns empty for unknown, empty, and remote paths", async () => {
+        await hybridWithCached("Media/rev3.mp4", "/cache/dir/rev3.mp4")
+        expect(resolveRemoteMedia("/cache/dir/never-seen.mp4")).toBe("")
+        expect(resolveRemoteMedia("")).toBe("")
+        expect(resolveRemoteMedia(undefined as any)).toBe("")
+        expect(resolveRemoteMedia("Media/rev3.mp4")).toBe("")
+    })
+
+    it("toRemoteMediaPath is identity for remote and unknown paths", async () => {
+        await hybridWithCached("Media/rev4.mp4", "/cache/dir/rev4.mp4")
+        expect(toRemoteMediaPath("/cache/dir/rev4.mp4")).toBe("Media/rev4.mp4")
+        expect(toRemoteMediaPath("Media/rev4.mp4")).toBe("Media/rev4.mp4")
+        expect(toRemoteMediaPath("/cache/dir/unknown.mp4")).toBe("/cache/dir/unknown.mp4")
+        expect(toRemoteMediaPath("")).toBe("")
+    })
+
+    it("drops the reverse entry when the mapping is evicted", async () => {
+        await hybridWithCached("Media/rev5.mp4", "/cache/dir/rev5.mp4")
+        expect(resolveRemoteMedia("/cache/dir/rev5.mp4")).toBe("Media/rev5.mp4")
+        h.requestMain.mockImplementation(async (channel: string) => {
+            if (channel === Main.MEDIA_CACHE_GET) return { cached: false, localPath: null }
+            return { requested: 1, downloaded: 1, skipped: 0, failed: [], bytes: 1, evicted: ["Media/rev5.mp4"] }
+        })
+        await prefetchRemotePaths(["Media/rev5b.mp4"])
+        expect(resolveRemoteMedia("/cache/dir/rev5.mp4")).toBe("")
+    })
+
+    it("drops every reverse entry on clear", async () => {
+        await hybridWithCached("Media/rev6.mp4", "/cache/dir/rev6.mp4")
+        expect(resolveRemoteMedia("/cache/dir/rev6.mp4")).toBe("Media/rev6.mp4")
+        h.requestMain.mockImplementation(async (channel: string) => {
+            if (channel === Main.MEDIA_CACHE_CLEAR) return { clearedFiles: 1, freedBytes: 1 }
+            return null
+        })
+        await clearMediaCacheUI()
+        expect(resolveRemoteMedia("/cache/dir/rev6.mp4")).toBe("")
     })
 })

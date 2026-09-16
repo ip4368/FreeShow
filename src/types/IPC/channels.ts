@@ -192,7 +192,9 @@ export enum Main {
     AI_GET_STATUS = "AI_GET_STATUS",
     AI_SETUP = "AI_SETUP",
     AI_SET_KEY = "AI_SET_KEY",
-    AI_LLM_COMPLETE = "AI_LLM_COMPLETE"
+    AI_LLM_COMPLETE = "AI_LLM_COMPLETE",
+    // Bootstrap (LOCAL only — push this machine's library to a headless server)
+    BOOTSTRAP_PUBLISH = "BOOTSTRAP_PUBLISH"
 }
 
 export enum ToMain {
@@ -230,5 +232,6 @@ export enum ToMain {
     API_TRIGGER2 = "API_TRIGGER2",
     OPEN_FOLDER2 = "OPEN_FOLDER2",
     OPEN_FILE2 = "OPEN_FILE2",
-    RECEIVE_MIDI2 = "RECEIVE_MIDI2"
+    RECEIVE_MIDI2 = "RECEIVE_MIDI2",
+    BOOTSTRAP_PROGRESS = "BOOTSTRAP_PROGRESS"
 }

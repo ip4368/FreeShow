@@ -6,6 +6,7 @@
     import { addProjectItem } from "../../../converters/project"
     import { activeShow, customMessageCredits, media, mediaOptions, mediaTags, outLocked, outputs, photoApiCredits, styles } from "../../../stores"
     import { translateText } from "../../../utils/language"
+    import { toRemoteMediaPath } from "../../../utils/remoteMediaCache"
     import { getKey } from "../../../values/keys"
     import Icon from "../../helpers/Icon.svelte"
     import { getMediaLayerType, getMediaStyle, getMediaType, loadThumbnail } from "../../helpers/media"
@@ -119,7 +120,7 @@
 
         const activeOutputs = getAllActiveOutputs()
 
-        const isActive = activeOutputs.some((a) => (a.out?.background?.path || a.out?.background?.id) === path)
+        const isActive = activeOutputs.some((a) => toRemoteMediaPath(a.out?.background?.path || a.out?.background?.id || "") === toRemoteMediaPath(path))
         if (isActive) {
             clearBackground()
             return

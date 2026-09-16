@@ -101,6 +101,8 @@
                 return "Checking which media files are already on the server…"
             case "media":
                 return totalCount ? `Uploading media (${uploadedCount}/${totalCount})…` : "Uploading media…"
+            case "commit":
+                return "Activating published library…"
             default:
                 return ""
         }
@@ -126,6 +128,8 @@
                 if (res.error === "not_empty") {
                     error = `The server already holds ${res.status?.shows ?? "?"} show(s). Enable Replace mode to overwrite it, or clear the server first.`
                     remoteStatus = res.status || remoteStatus
+                } else if (res.error === "server_outdated") {
+                    error = "This server is too old for staged publish. Update the headless server, then try again."
                 } else {
                     error = res.error || "Publish failed."
                 }
@@ -198,7 +202,7 @@
     }}
 />
 
-<MaterialToggleSwitch label="Upload media files" title="Upload the audio/image/video files your shows reference. Files already on the server (same size) are skipped." checked={includeMedia} defaultValue={true} on:change={(e) => ((includeMedia = e.detail), saveDraft())} />
+<MaterialToggleSwitch label="Upload media files" title="Upload the audio/image/video files your shows reference. Files already on the server (identical content) are skipped." checked={includeMedia} defaultValue={true} on:change={(e) => ((includeMedia = e.detail), saveDraft())} />
 <MaterialToggleSwitch label="Include Bibles" title="Copy your downloaded Bibles (.fsb) to the server." checked={includeBibles} defaultValue={true} on:change={(e) => ((includeBibles = e.detail), saveDraft())} />
 <MaterialToggleSwitch label="Replace remote library" title="Delete everything on the server first, then publish. Without this, publishing to a non-empty server is refused." checked={replace} defaultValue={false} on:change={(e) => (replace = e.detail)} />
 

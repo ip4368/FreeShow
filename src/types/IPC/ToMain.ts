@@ -44,7 +44,7 @@ export interface ToMainSendPayloads {
     // AI
     [ToMain.AI_STATUS]: { state: "listening" | "stopped" | "error"; message?: string }
     [ToMain.AI_TRANSCRIPT]: { text: string; interim?: boolean; startMs?: number; endMs?: number; language?: string; music?: boolean; utteranceEnd?: boolean; confidence?: number; glue?: boolean }
-    [ToMain.BOOTSTRAP_PROGRESS]: { phase: "build" | "restore" | "manifest" | "media" | "done"; progress?: number; current?: string; uploaded?: number; total?: number }
+    [ToMain.BOOTSTRAP_PROGRESS]: { phase: "build" | "restore" | "manifest" | "media" | "commit" | "done"; progress?: number; current?: string; uploaded?: number; total?: number }
 }
 
 export interface ToMainReturnPayloads {

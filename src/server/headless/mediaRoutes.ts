@@ -20,7 +20,8 @@ import fs from "fs"
 import path from "path"
 import type { Readable } from "stream"
 import { httpAuth } from "./auth"
-import { isTrashRel, resolveInSandbox, toSandboxRelative } from "./data/dataPaths"
+import { getBootstrapSession, getSessionFilesDir } from "./bootstrapSession"
+import { isBootstrapStagingRel, isTrashRel, resolveInSandbox, toSandboxRelative } from "./data/dataPaths"
 import { bumpMediaLibraryVersion } from "./data/libraryVersion"
 import { getMediaHash, peekCachedHash } from "./mediaHash"
 
@@ -135,6 +136,9 @@ function resolveMediaFile(raw: unknown): { filePath: string; stat: fs.Stats; mim
 
     // never serve Trash contents (applies to /media, /media/meta, and /media/manifest)
     if (isTrashRel(toSandboxRelative(filePath))) return { status: 403, message: "forbidden" }
+
+    // bootstrap staging is invisible until commit (same exclusion as Trash)
+    if (isBootstrapStagingRel(toSandboxRelative(filePath))) return { status: 403, message: "forbidden" }
 
     // safety: only serve known media extensions (token auth already applied above)
     const ext = path.extname(filePath).slice(1).toLowerCase()
@@ -270,6 +274,10 @@ export function registerMediaRoutes(app: Express, options: MediaRouteOptions = {
     // Upload a media file into a sandboxed folder:
     //   POST /media/upload?path=<relative folder>&name=<file name>   (raw body = file bytes)
     // Same guards as reads: token auth, sandbox confinement, media-extension allowlist.
+    //
+    // With &staging=<bootstrap session> the bytes land in that session's staging
+    // dir instead of the live library (invisible until commit; no version bump
+    // or live broadcast — commit does both once, for all staged files).
     app.post("/media/upload", httpAuth, async (req: Request, res: Response) => {
         const rawName = typeof req.query.name === "string" ? req.query.name : ""
         const name = path.basename(rawName).trim() // strip any directory component
@@ -278,11 +286,25 @@ export function registerMediaRoutes(app: Express, options: MediaRouteOptions = {
         const ext = path.extname(name).slice(1).toLowerCase()
         if (!MEDIA_MIME[ext]) return void res.status(415).send("unsupported media type")
 
-        const folder = resolveInSandbox(typeof req.query.path === "string" ? req.query.path : "")
-        if (!folder) return void res.status(403).send("forbidden")
+        const staging = typeof req.query.staging === "string" ? req.query.staging : ""
+        let target: string | null
+        if (staging) {
+            // staged upload: confine under the session's files dir (same guards,
+            // different root — absolute folder paths are rejected outright)
+            if (!getBootstrapSession(staging)) return void res.status(404).send("unknown session")
+            const filesDir = getSessionFilesDir(staging)!
+            const rawFolder = typeof req.query.path === "string" ? req.query.path : ""
+            if (path.isAbsolute(rawFolder)) return void res.status(403).send("forbidden")
+            const folder = path.join(filesDir, rawFolder)
+            target = path.join(folder, name)
+            if (target !== filesDir && !target.startsWith(filesDir + path.sep)) return void res.status(403).send("forbidden")
+        } else {
+            const folder = resolveInSandbox(typeof req.query.path === "string" ? req.query.path : "")
+            if (!folder) return void res.status(403).send("forbidden")
 
-        const target = resolveInSandbox(path.join(toSandboxRelative(folder), name))
-        if (!target) return void res.status(403).send("forbidden")
+            target = resolveInSandbox(path.join(toSandboxRelative(folder), name))
+            if (!target) return void res.status(403).send("forbidden")
+        }
 
         // stream to a sibling tmp file (same filesystem, so the rename is atomic)
         // instead of buffering the whole body in RAM
@@ -307,6 +329,13 @@ export function registerMediaRoutes(app: Express, options: MediaRouteOptions = {
             console.error("Upload failed:", target, err)
             return void res.status(500).send("write failed")
         }
+
+        if (staging) {
+            // invisible until commit: report the live-intended path, broadcast nothing
+            const filesDir = getSessionFilesDir(staging)!
+            return void res.json({ path: path.relative(filesDir, target), name, staged: true })
+        }
+
         bumpMediaLibraryVersion()
         const rel = toSandboxRelative(target)
         // live-refresh every client (without this only the epoch file changes and

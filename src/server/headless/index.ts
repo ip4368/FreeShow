@@ -125,7 +125,10 @@ export function startHeadlessServer(args: CliArgs = {}) {
             for (const [channel, value] of Object.entries(result.changed || {})) {
                 io.emit("MAIN", { data: { channel, data: value } })
             }
-        }
+        },
+        // staged media goes live all at once at commit (staged uploads broadcast
+        // nothing) — one live-refresh for the whole batch
+        onMediaCommitted: (rels) => io.emit("MAIN", { data: { channel: "MEDIA_LIBRARY_CHANGED", data: { kind: "uploaded", paths: rels, v: getMediaLibraryVersion() } } })
     })
 
     io.use(socketAuth)

@@ -3,10 +3,13 @@
 // working local setup becomes available online for co-editing (Option A).
 //
 // Runs in the Electron main process (it owns the disk): builds a backup-shaped zip
-// with media paths rewritten to server-relative destinations, POSTs it to the
-// server's HTTP /bootstrap/restore endpoint, then uploads referenced media bytes
-// via /media/upload with manifest-based resume (same-size files are skipped).
+// with media paths rewritten to server-relative destinations, then runs the
+// staged protocol — start a session, stage the snapshot, stage media uploads,
+// commit (snapshot + media go live together). Anything short of commit leaves
+// the live library untouched. Resume is hash-verified: a file is skipped only
+// when the server's copy matches in both size and sha1 content hash.
 
+import { createHash } from "crypto"
 import fs from "fs"
 import path from "path"
 import { collectMediaPathsFromProject, collectMediaPathsFromShow } from "../../shared/media/collectShowMedia"
@@ -49,7 +52,7 @@ export interface BootstrapPublishResult {
 }
 
 export interface BootstrapProgress {
-    phase: "build" | "restore" | "manifest" | "media" | "done"
+    phase: "build" | "restore" | "manifest" | "media" | "commit" | "done"
     /** 0..1 within the media phase (files completed / total) */
     progress?: number
     current?: string
@@ -223,11 +226,33 @@ function baseUrl(serverUrl: string): string {
     return serverUrl.replace(/\/+$/, "")
 }
 
+/**
+ * Human-readable error from a failed bootstrap call. The server answers errors
+ * as JSON ({ error }) or plain text depending on the endpoint — read the body
+ * once as text and unpack JSON when it parses.
+ */
+async function readError(res: Response, fallback: string): Promise<string> {
+    let text = ""
+    try {
+        text = ((await res.text()) || "").trim()
+    } catch {
+        return fallback
+    }
+    if (!text) return fallback
+    try {
+        const body = JSON.parse(text)
+        if (typeof body?.error === "string" && body.error) return body.error.slice(0, 200)
+    } catch {
+        // plain-text error — return as-is below
+    }
+    return text.slice(0, 200)
+}
+
 /** Upload one file by streaming it from disk (never buffered in RAM). */
-async function uploadMediaFile(base: string, token: string | undefined, item: BootstrapMediaItem): Promise<{ ok: boolean; reason?: string }> {
+async function uploadMediaFile(base: string, token: string | undefined, session: string, item: BootstrapMediaItem): Promise<{ ok: boolean; reason?: string }> {
     const folder = path.posix.dirname(item.serverRel) === "." ? "" : path.posix.dirname(item.serverRel)
     const name = path.posix.basename(item.serverRel)
-    const url = withToken(`${base}/media/upload?path=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}`, token)
+    const url = withToken(`${base}/media/upload?path=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}&staging=${encodeURIComponent(session)}`, token)
     try {
         const stat = fs.statSync(item.localAbs)
         if (!stat.isFile() || !stat.size) return { ok: false, reason: "unreadable" }
@@ -244,6 +269,21 @@ async function uploadMediaFile(base: string, token: string | undefined, item: Bo
     }
 }
 
+/**
+ * Streaming sha1 of a local file. Must match the server's hash exactly
+ * (src/server/headless/mediaHash.ts: sha1 hex) — resume compares the two. Any
+ * failure rejects, and callers treat that as "hash unknown, upload it".
+ */
+function sha1File(localAbs: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const hash = createHash("sha1")
+        const stream = fs.createReadStream(localAbs)
+        stream.on("error", reject)
+        stream.on("data", (chunk) => hash.update(chunk))
+        stream.on("end", () => resolve(hash.digest("hex")))
+    })
+}
+
 export async function publishBootstrap(options: BootstrapPublishOptions): Promise<BootstrapPublishResult> {
     const serverUrl = (options.serverUrl || "").trim().replace(/\/+$/, "")
     if (!serverUrl) return { success: false, error: "missing_server_url" }
@@ -252,6 +292,23 @@ export async function publishBootstrap(options: BootstrapPublishOptions): Promis
     const includeMedia = options.includeMedia !== false
     const includeBibles = options.includeBibles !== false
     const base = baseUrl(serverUrl)
+    let session = ""
+
+    // best-effort session cleanup after any post-start failure (the server
+    // auto-cleans on failed stage/commit too — this covers client-side faults)
+    const abort = async () => {
+        if (!session) return
+        try {
+            await fetch(withToken(`${base}/bootstrap/session?session=${encodeURIComponent(session)}`, options.token), { method: "DELETE" })
+        } catch {
+            // ignored — expiry sweep is the backstop
+        }
+    }
+    const fail = async (error: string, status?: { shows: number; bibles: number; empty: boolean }): Promise<BootstrapPublishResult> => {
+        await abort()
+        report({ phase: "done" })
+        return status ? { success: false, error, status } : { success: false, error }
+    }
 
     try {
         report({ phase: "build" })
@@ -264,101 +321,141 @@ export async function publishBootstrap(options: BootstrapPublishOptions): Promis
         if (includeBibles) entries.push(...buildBibleEntries())
         const zip = await zipEntries(entries)
 
-        // replace-guard check (server also enforces it — this is the friendly early error)
-        let status: { shows: number; bibles: number; empty: boolean } | undefined
-        try {
-            const statusRes = await fetch(withToken(`${base}/bootstrap/status`, options.token))
-            if (statusRes.ok) status = await statusRes.json()
-        } catch {
-            // unreachable status endpoint — the restore POST below reports the real error
+        // start a staged session (this IS the replace-guard check now)
+        const startRes = await fetch(withToken(`${base}/bootstrap/start`, options.token), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ force: !!options.replace })
+        }).catch(() => null)
+        if (!startRes) return fail("unreachable")
+        if (startRes.status === 404) return fail("server_outdated")
+        if (startRes.status === 409) {
+            const body = await startRes.json().catch(() => ({}))
+            return fail("not_empty", { shows: body.shows ?? 0, bibles: body.bibles ?? 0, empty: false })
         }
-        if (status && !status.empty && !options.replace) {
-            report({ phase: "done" })
-            return { success: false, error: "not_empty", status }
-        }
+        if (!startRes.ok) return fail(await readError(startRes, `start HTTP ${startRes.status}`))
+        session = (await startRes.json().catch(() => ({})))?.session || ""
+        if (!session) return fail("bad_session")
 
         report({ phase: "restore" })
-        const restoreRes = await fetch(withToken(`${base}/bootstrap/restore${options.replace ? "?force=true" : ""}`, options.token), {
+        const restoreRes = await fetch(withToken(`${base}/bootstrap/restore?session=${encodeURIComponent(session)}`, options.token), {
             method: "POST",
             headers: { "Content-Type": "application/octet-stream" },
             body: zip as any
-        })
-        if (restoreRes.status === 409) {
-            const body = await restoreRes.json().catch(() => ({}))
-            report({ phase: "done" })
-            return { success: false, error: "not_empty", status: { shows: body.shows ?? 0, bibles: body.bibles ?? 0, empty: false } }
-        }
-        if (!restoreRes.ok) {
-            report({ phase: "done" })
-            return { success: false, error: (await restoreRes.text().catch(() => ""))?.trim().slice(0, 200) || `restore HTTP ${restoreRes.status}` }
-        }
-        const restoreBody = await restoreRes.json().catch(() => ({}))
-        if (!restoreBody?.finished) {
-            report({ phase: "done" })
-            return { success: false, error: restoreBody?.error || "restore_failed" }
-        }
-
-        const summary: BootstrapPublishResult = {
-            success: true,
-            status,
-            shows: restoreBody.restoredShowIds?.length ?? shows.length,
-            bibles: restoreBody.restoredBibles ?? 0,
-            replaced: !!restoreBody.replaced
-        }
-
-        if (!includeMedia || !media.size) {
-            report({ phase: "done" })
-            return { ...summary, media: { uploaded: 0, skipped: 0, failed: [], bytes: 0 } }
-        }
-
-        // manifest resume: skip files the server already has at the same size
-        report({ phase: "manifest" })
-        const items = [...media.values()]
-        const presentSizes = new Map<string, number>()
-        try {
-            const manifestRes = await fetch(withToken(`${base}/media/manifest`, options.token), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ paths: items.map((i) => i.serverRel) })
-            })
-            if (manifestRes.ok) {
-                const manifest = await manifestRes.json()
-                for (const f of manifest?.files || []) {
-                    if (typeof f?.path === "string" && typeof f?.size === "number") presentSizes.set(f.path, f.size)
-                }
-            }
-        } catch {
-            // manifest failure is non-fatal — fall through to uploading everything
-        }
+        }).catch(() => null)
+        if (!restoreRes) return fail("unreachable")
+        if (!restoreRes.ok) return fail(await readError(restoreRes, `stage HTTP ${restoreRes.status}`))
+        const staged = await restoreRes.json().catch(() => ({}))
+        if (!staged?.finished) return fail(staged?.error || "stage_failed")
 
         let uploaded = 0
         let skipped = 0
         let bytes = 0
         const failed: { path: string; reason: string }[] = []
-        const total = items.length
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i]
-            const serverSize = presentSizes.get(item.serverRel)
-            if (serverSize === item.size) {
-                skipped++
+
+        if (includeMedia && media.size) {
+            // hash-verified resume: the manifest reports size + cached hash per
+            // file; a file is skipped only when BOTH match the local copy.
+            // Same size + different content is re-uploaded (overwrite).
+            report({ phase: "manifest" })
+            const items = [...media.values()]
+            const present = new Map<string, { size: number; hash: string | null }>()
+            try {
+                const manifestRes = await fetch(withToken(`${base}/media/manifest`, options.token), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ paths: items.map((i) => i.serverRel) })
+                })
+                if (manifestRes.ok) {
+                    const manifest = await manifestRes.json()
+                    for (const f of manifest?.files || []) {
+                        if (typeof f?.path === "string" && typeof f?.size === "number") present.set(f.path, { size: f.size, hash: typeof f?.hash === "string" ? f.hash : null })
+                    }
+                }
+            } catch {
+                // manifest failure is non-fatal — fall through to uploading everything
+            }
+
+            const total = items.length
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i]
+                const serverEntry = present.get(item.serverRel)
+                // cheap gate first: only size-matching candidates pay for hashing
+                if (serverEntry && serverEntry.size === item.size && (await shouldSkip(base, options.token, item, serverEntry.hash))) {
+                    skipped++
+                    report({ phase: "media", progress: (i + 1) / total, current: item.serverRel, uploaded: uploaded + skipped, total })
+                    continue
+                }
+                report({ phase: "media", progress: i / total, current: item.serverRel, uploaded: uploaded + skipped, total })
+                const result = await uploadMediaFile(base, options.token, session, item)
+                if (result.ok) {
+                    uploaded++
+                    bytes += item.size
+                } else {
+                    failed.push({ path: item.serverRel, reason: result.reason || "upload failed" })
+                }
                 report({ phase: "media", progress: (i + 1) / total, current: item.serverRel, uploaded: uploaded + skipped, total })
-                continue
             }
-            report({ phase: "media", progress: i / total, current: item.serverRel, uploaded: uploaded + skipped, total })
-            const result = await uploadMediaFile(base, options.token, item)
-            if (result.ok) {
-                uploaded++
-                bytes += item.size
-            } else {
-                failed.push({ path: item.serverRel, reason: result.reason || "upload failed" })
-            }
-            report({ phase: "media", progress: (i + 1) / total, current: item.serverRel, uploaded: uploaded + skipped, total })
+        }
+
+        // commit: snapshot + staged media go live together (always runs, even
+        // with media skipped — the staged snapshot still needs activating)
+        report({ phase: "commit" })
+        const commitRes = await fetch(withToken(`${base}/bootstrap/commit`, options.token), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session })
+        }).catch(() => null)
+        if (!commitRes) return fail("unreachable")
+        if (commitRes.status === 409) {
+            const body = await commitRes.json().catch(() => ({}))
+            return fail("not_empty", { shows: body.shows ?? 0, bibles: body.bibles ?? 0, empty: false })
+        }
+        if (!commitRes.ok) return fail(await readError(commitRes, `commit HTTP ${commitRes.status}`))
+        const committed = await commitRes.json().catch(() => ({}))
+        if (!committed?.finished) return fail(committed?.error || "commit_failed")
+        for (const f of committed?.media?.failed || []) {
+            if (typeof f?.path === "string") failed.push({ path: f.path, reason: f?.reason || "commit failed" })
         }
 
         report({ phase: "done" })
-        return { ...summary, media: { uploaded, skipped, failed, bytes } }
+        return {
+            success: true,
+            shows: committed.restoredShowIds?.length ?? shows.length,
+            bibles: committed.restoredBibles ?? 0,
+            replaced: !!committed.replaced,
+            media: { uploaded, skipped, failed, bytes }
+        }
     } catch (err) {
-        report({ phase: "done" })
-        return { success: false, error: (err as Error)?.message?.slice(0, 200) || "bootstrap_failed" }
+        return fail((err as Error)?.message?.slice(0, 200) || "bootstrap_failed")
     }
+}
+
+/**
+ * True when the server's copy is byte-identical (size already matched — this
+ * checks the content hash). Uncached server hashes are resolved on demand via
+ * /media/meta (which computes + caches server-side). Any failure or mismatch
+ * returns false: the safe direction is always "upload it".
+ */
+async function shouldSkip(base: string, token: string | undefined, item: BootstrapMediaItem, serverHash: string | null): Promise<boolean> {
+    let localHash: string
+    try {
+        report({ phase: "manifest", current: item.serverRel })
+        localHash = await sha1File(item.localAbs)
+    } catch {
+        return false
+    }
+    let remoteHash = serverHash
+    if (!remoteHash) {
+        try {
+            const metaRes = await fetch(withToken(`${base}/media/meta?path=${encodeURIComponent(item.serverRel)}`, token))
+            if (!metaRes.ok) return false
+            const meta = await metaRes.json()
+            if (meta?.size !== item.size || typeof meta?.hash !== "string") return false
+            remoteHash = meta.hash
+        } catch {
+            return false
+        }
+    }
+    return remoteHash === localHash
 }

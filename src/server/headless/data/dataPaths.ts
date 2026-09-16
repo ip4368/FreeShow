@@ -79,3 +79,14 @@ export function isTrashRel(rel: string): boolean {
     const norm = rel.replace(/\\/g, "/").toLowerCase()
     return norm === "trash" || norm.startsWith("trash/")
 }
+
+/**
+ * True when a sandbox-relative path is inside the bootstrap staging area (see
+ * bootstrapSession.ts). Staged bytes are invisible until commit: same
+ * serving/listing exclusion as Trash. Case-sensitive on purpose — the staging
+ * dir name is server-generated, never user input.
+ */
+export function isBootstrapStagingRel(rel: string): boolean {
+    const norm = rel.replace(/\\/g, "/")
+    return norm === ".bootstrap-staging" || norm.startsWith(".bootstrap-staging/")
+}

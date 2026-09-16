@@ -1,3 +1,4 @@
+import { createHash } from "crypto"
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -61,6 +62,12 @@ let localRoot = ""
 let outsideRoot = ""
 let uploaded: { url: string }[]
 let manifestBodies: any[]
+let startedBodies: any[]
+let commits: any[]
+let aborts: string[]
+let metaCalls: string[]
+
+const sha1 = (s: string) => createHash("sha1").update(s).digest("hex")
 
 const SHOW_ID = "show-e2e-1"
 
@@ -109,21 +116,40 @@ function setupLibrary() {
     }
 }
 
-function mockServer(opts: { status?: any; statusError?: boolean; restore?: any; restoreStatus?: number; manifest?: any; upload?: (url: string) => any } = {}) {
+function mockServer(opts: { start?: any; startStatus?: number; restore?: any; restoreStatus?: number; manifest?: any; meta?: Record<string, any>; commit?: any; commitStatus?: number; upload?: (url: string) => any } = {}) {
     uploaded = []
     manifestBodies = []
+    startedBodies = []
+    commits = []
+    aborts = []
+    metaCalls = []
     fetchMock = vi.fn(async (url: string, init: any) => {
-        if (url.includes("/bootstrap/status")) {
-            if (opts.statusError) throw new Error("network down")
-            return { ok: true, status: 200, json: async () => opts.status ?? { shows: 0, bibles: 0, empty: true } }
+        if (url.includes("/bootstrap/start")) {
+            startedBodies.push(JSON.parse(init.body))
+            const status = opts.startStatus ?? 200
+            const body = opts.start ?? { session: "s1", expiresAt: 0 }
+            return { ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) }
         }
         if (url.includes("/bootstrap/restore")) {
-            return {
-                ok: (opts.restoreStatus ?? 200) < 300,
-                status: opts.restoreStatus ?? 200,
-                json: async () => opts.restore ?? { finished: true, restoredShowIds: [SHOW_ID], restoredBibles: 1 },
-                text: async () => "err"
-            }
+            const status = opts.restoreStatus ?? 200
+            const body = opts.restore ?? { finished: true, staged: { entries: 1 } }
+            return { ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) }
+        }
+        if (url.includes("/bootstrap/commit")) {
+            commits.push(JSON.parse(init.body))
+            const status = opts.commitStatus ?? 200
+            const body = opts.commit ?? { finished: true, restoredShowIds: [SHOW_ID], restoredBibles: 1, replaced: false, media: { moved: 0, failed: [] } }
+            return { ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) }
+        }
+        if (url.includes("/bootstrap/session")) {
+            aborts.push(url)
+            return { ok: true, status: 200, json: async () => ({ aborted: true }) }
+        }
+        if (url.includes("/media/meta")) {
+            metaCalls.push(url)
+            const entry = opts.meta?.[new URL(url).searchParams.get("path") || ""]
+            if (!entry) return { ok: false, status: 404, json: async () => ({}), text: async () => "not found" }
+            return { ok: true, status: 200, json: async () => entry }
         }
         if (url.includes("/media/manifest")) {
             manifestBodies.push(JSON.parse(init.body))
@@ -156,7 +182,7 @@ beforeEach(() => {
 })
 
 describe("publishBootstrap (Electron publish path)", () => {
-    it("builds a remapped zip, restores, and streams media uploads", async () => {
+    it("builds a remapped zip, stages it, uploads staged media, and commits", async () => {
         const fetch = mockServer()
         const result = await publishBootstrap({ serverUrl: "http://server:5540", token: "t", destFolder: "Media" })
 
@@ -164,12 +190,17 @@ describe("publishBootstrap (Electron publish path)", () => {
         expect(result.shows).toBe(1)
         expect(result.bibles).toBe(1)
         expect(result.media?.failed).toEqual([])
+        expect(aborts).toEqual([])
+
+        // staged flow: start (no force) -> restore+uploads bound to the session -> commit
+        expect(startedBodies).toEqual([{ force: false }])
+        expect(commits).toEqual([{ session: "s1" }])
 
         // zip body: shows rewritten to server-relative, settings stripped, bibles included
         const restoreCall = fetch.mock.calls.find(([u]) => String(u).includes("/bootstrap/restore"))
         expect(restoreCall).toBeDefined()
         expect(String(restoreCall![0])).toContain("token=t")
-        expect(String(restoreCall![0])).not.toContain("force=true")
+        expect(String(restoreCall![0])).toContain("session=s1")
         const entries = await unzipBuffer((restoreCall![1] as any).body)
         const names = entries.map((e) => e.name)
         expect(names).toContain("SHOWS/E2E Service.show")
@@ -187,58 +218,93 @@ describe("publishBootstrap (Electron publish path)", () => {
         expect(manifestBodies.length).toBe(1)
         expect(manifestBodies[0].paths).toEqual(expect.arrayContaining(["Media/bg.jpg", "Media/clip.mp4", "Audio/bed.mp3"]))
 
-        // one streamed upload per file, token attached
+        // one streamed upload per file, token + staging session attached
         expect(uploaded.length).toBe(3)
         expect(uploaded.map((u) => u.url).sort()).toEqual([expect.stringContaining("/media/upload?path=Audio&name=bed.mp3"), expect.stringContaining("/media/upload?path=Media&name=bg.jpg"), expect.stringContaining("/media/upload?path=Media&name=clip.mp4")])
-        for (const u of uploaded) expect(u.url).toContain("token=t")
+        for (const u of uploaded) {
+            expect(u.url).toContain("token=t")
+            expect(u.url).toContain("staging=s1")
+        }
 
         // progress streamed back to the renderer through every phase
         const phases = vi
             .mocked(sendToMain)
             .mock.calls.filter(([c]) => c === ToMain.BOOTSTRAP_PROGRESS)
             .map(([, p]) => (p as any).phase)
-        expect(phases).toEqual(expect.arrayContaining(["build", "restore", "manifest", "media", "done"]))
+        expect(phases).toEqual(expect.arrayContaining(["build", "restore", "manifest", "media", "commit", "done"]))
     })
 
     it("refuses when the server is not empty and replace is off", async () => {
-        const fetch = mockServer({ status: { shows: 4, bibles: 1, empty: false } })
+        const fetch = mockServer({ startStatus: 409, start: { error: "not_empty", shows: 4, bibles: 1, empty: false } })
         const result = await publishBootstrap({ serverUrl: "http://server:5540" })
         expect(result).toMatchObject({ success: false, error: "not_empty", status: { shows: 4 } })
         expect(fetch.mock.calls.some(([u]) => String(u).includes("/bootstrap/restore"))).toBe(false)
         expect(uploaded).toEqual([])
+        expect(commits).toEqual([])
     })
 
-    it("replace mode forces the restore", async () => {
-        const fetch = mockServer({ status: { shows: 2, bibles: 0, empty: false }, restore: { finished: true, restoredShowIds: [SHOW_ID], replaced: true } })
+    it("replace mode binds force to the session and still commits without media", async () => {
+        const fetch = mockServer({ commit: { finished: true, restoredShowIds: [SHOW_ID], restoredBibles: 0, replaced: true, media: { moved: 0, failed: [] } } })
         const result = await publishBootstrap({ serverUrl: "http://server:5540/", replace: true, includeMedia: false })
         expect(result.success).toBe(true)
         expect(result.replaced).toBe(true)
+        expect(startedBodies).toEqual([{ force: true }])
+        // the snapshot still activates via commit even with media skipped
+        expect(commits).toEqual([{ session: "s1" }])
         const restoreCall = fetch.mock.calls.find(([u]) => String(u).includes("/bootstrap/restore"))
-        expect(String(restoreCall![0])).toContain("force=true")
+        expect(String(restoreCall![0])).toContain("session=s1")
     })
 
-    it("treats a 409 restore as not_empty when the status check was unreachable", async () => {
-        mockServer({ statusError: true, restoreStatus: 409, restore: { finished: false, error: "not_empty", shows: 3, bibles: 0 } })
+    it("treats a 409 commit as not_empty (seeded after start)", async () => {
+        mockServer({ commitStatus: 409, commit: { finished: false, error: "not_empty", shows: 3, bibles: 0 } })
         const result = await publishBootstrap({ serverUrl: "http://server:5540" })
         expect(result).toMatchObject({ success: false, error: "not_empty", status: { shows: 3, empty: false } })
+        // failed commit cleans up best-effort (the server auto-cleans too)
+        expect(aborts.length).toBe(1)
     })
 
-    it("skips files the server already has at the same size (manifest resume)", async () => {
+    it("skips only when size AND content hash both match (hash-verified resume)", async () => {
         mockServer({
             manifest: {
                 files: [
-                    { path: "Media/bg.jpg", size: 8 },
-                    { path: "Audio/bed.mp3", size: 9 }
+                    { path: "Media/bg.jpg", size: 8, hash: sha1("BG_BYTES") },
+                    { path: "Audio/bed.mp3", size: 9, hash: sha1("something else entirely") }
                 ],
                 missing: []
             }
         })
         const result = await publishBootstrap({ serverUrl: "http://server:5540" })
         expect(result.success).toBe(true)
-        expect(result.media?.skipped).toBe(2)
-        expect(result.media?.uploaded).toBe(1)
-        expect(uploaded.length).toBe(1)
-        expect(uploaded[0].url).toContain("clip.mp4")
+        // bg.jpg: identical content -> skipped; bed.mp3: same size, different
+        // content -> re-uploaded (overwrite); clip.mp4: missing -> uploaded
+        expect(result.media?.skipped).toBe(1)
+        expect(result.media?.uploaded).toBe(2)
+        expect(uploaded.map((u) => u.url)).toContainEqual(expect.stringContaining("bed.mp3"))
+        expect(uploaded.map((u) => u.url)).toContainEqual(expect.stringContaining("clip.mp4"))
+        // both candidates were hash-checked locally, so no meta fetches were needed
+        expect(metaCalls).toEqual([])
+    })
+
+    it("verifies uncached candidates through /media/meta before skipping", async () => {
+        mockServer({
+            manifest: {
+                files: [
+                    { path: "Media/bg.jpg", size: 8, hash: null },
+                    { path: "Audio/bed.mp3", size: 9, hash: null }
+                ],
+                missing: []
+            },
+            meta: {
+                "Media/bg.jpg": { path: "Media/bg.jpg", size: 8, hash: sha1("BG_BYTES") },
+                "Audio/bed.mp3": { path: "Audio/bed.mp3", size: 9, hash: sha1("stale bytes") }
+            }
+        })
+        const result = await publishBootstrap({ serverUrl: "http://server:5540" })
+        expect(result.success).toBe(true)
+        expect(metaCalls.length).toBe(2)
+        expect(result.media?.skipped).toBe(1)
+        expect(uploaded.map((u) => u.url)).toContainEqual(expect.stringContaining("bed.mp3"))
+        expect(uploaded.map((u) => u.url)).not.toContainEqual(expect.stringContaining("bg.jpg"))
     })
 
     it("honors the media and bibles toggles", async () => {
@@ -247,6 +313,8 @@ describe("publishBootstrap (Electron publish path)", () => {
         expect(result.success).toBe(true)
         expect(result.media).toMatchObject({ uploaded: 0, skipped: 0 })
         expect(fetch.mock.calls.some(([u]) => String(u).includes("/media/"))).toBe(false)
+        // ... but the staged snapshot still commits
+        expect(commits).toEqual([{ session: "s1" }])
         const restoreCall = fetch.mock.calls.find(([u]) => String(u).includes("/bootstrap/restore"))
         const entries = await unzipBuffer((restoreCall![1] as any).body)
         expect(entries.map((e) => e.name).some((n) => n.startsWith("BIBLE_"))).toBe(false)
@@ -260,6 +328,30 @@ describe("publishBootstrap (Electron publish path)", () => {
         expect(result.success).toBe(true)
         expect(result.media?.uploaded).toBe(2)
         expect(result.media?.failed).toEqual([{ path: "Media/clip.mp4", reason: "disk full" }])
+    })
+
+    it("merges commit-time move failures into the media result", async () => {
+        mockServer({ commit: { finished: true, restoredShowIds: [SHOW_ID], restoredBibles: 1, replaced: false, media: { moved: 2, failed: [{ path: "Media/bg.jpg", reason: "disk full" }] } } })
+        const result = await publishBootstrap({ serverUrl: "http://server:5540" })
+        expect(result.success).toBe(true)
+        expect(result.media?.failed).toEqual([{ path: "Media/bg.jpg", reason: "disk full" }])
+    })
+
+    it("aborts the session when staging fails", async () => {
+        const fetch = mockServer({ restoreStatus: 400, restore: { finished: false, error: "corrupt_snapshot" } })
+        const result = await publishBootstrap({ serverUrl: "http://server:5540" })
+        expect(result.success).toBe(false)
+        expect(aborts.length).toBe(1)
+        expect(String(aborts[0])).toContain("session=s1")
+        expect(commits).toEqual([])
+        expect(fetch.mock.calls.some(([u]) => String(u).includes("/media/upload"))).toBe(false)
+    })
+
+    it("aborts the session when commit fails", async () => {
+        mockServer({ commitStatus: 500, commit: { finished: false, error: "disk fault" } })
+        const result = await publishBootstrap({ serverUrl: "http://server:5540" })
+        expect(result).toMatchObject({ success: false, error: "disk fault" })
+        expect(aborts.length).toBe(1)
     })
 
     it("sends outside-root files to the chosen destination folder", async () => {

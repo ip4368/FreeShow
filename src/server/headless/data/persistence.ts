@@ -9,7 +9,7 @@ import type { Show, TrimmedShow, TrimmedShows } from "../../../types/Show"
 import { deleteFile, doesPathExist, joinPath, loadTupleFile, parseJSON, readFile, readFolder, writeFile } from "../../../shared/data/fsCore"
 import type { PersistenceAdapter, RestoreResult, SaveResult } from "../../../shared/platform/Platform"
 import { zipEntries } from "../../../shared/data/zip"
-import { getDataFolderPath, getDataFolderRoot, resolveInSandbox, toSandboxRelative } from "./dataPaths"
+import { getDataFolderPath, getDataFolderRoot, isBootstrapStagingRel, resolveInSandbox, toSandboxRelative } from "./dataPaths"
 import { getStore, getStoreValue, setStore, setStoreValue, storeRegistry } from "./headlessStore"
 import { deleteTrashPermanent, emptyTrash, isTrashRel, listTrash, restoreTrash, trashPaths } from "./trash"
 import { findMediaUsage } from "./usage"
@@ -123,7 +123,8 @@ export function readFolderContent(data: { path: string | string[]; depth?: numbe
     for (const input of inputs) {
         const abs = resolveInSandbox(input)
         // Trash is managed through its own channels — never expose it as a browsable folder
-        if (abs && !isTrashRel(toSandboxRelative(abs))) walk(abs, 0)
+        // (same for bootstrap staging: invisible until commit)
+        if (abs && !isTrashRel(toSandboxRelative(abs)) && !isBootstrapStagingRel(toSandboxRelative(abs))) walk(abs, 0)
     }
 
     function walk(folderPath: string, currentDepth: number) {
@@ -135,7 +136,7 @@ export function readFolderContent(data: { path: string | string[]; depth?: numbe
         } catch {
             return
         }
-        const filePathsAbs = entries.map((name) => joinPath(folderPath, name)).filter((p) => !isTrashRel(toSandboxRelative(p)))
+        const filePathsAbs = entries.map((name) => joinPath(folderPath, name)).filter((p) => !isTrashRel(toSandboxRelative(p)) && !isBootstrapStagingRel(toSandboxRelative(p)))
         const filePathsRel = filePathsAbs.map(toSandboxRelative)
 
         if (currentDepth > depth) {

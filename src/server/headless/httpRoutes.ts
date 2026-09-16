@@ -7,6 +7,7 @@ import express from "express"
 import path from "path"
 import { doesPathExist } from "../../shared/data/fsCore"
 import { HEADLESS_CAPABILITIES } from "../../shared/platform/capabilities"
+import { registerBootstrapRoutes, type BootstrapRouteOptions } from "./bootstrapRoutes"
 import { registerMediaRoutes, type MediaRouteOptions } from "./mediaRoutes"
 import { registerThumbnailRoutes } from "./thumbnailRoutes"
 
@@ -20,7 +21,7 @@ function getPublicDir(): string {
     return process.env.FREESHOW_PUBLIC_DIR || path.join(process.cwd(), "public")
 }
 
-export function registerHttpRoutes(app: Express, options: MediaRouteOptions = {}) {
+export function registerHttpRoutes(app: Express, options: MediaRouteOptions & BootstrapRouteOptions = {}) {
     const webDir = getWebDir()
 
     // allow remote (cross-origin) clients to read JSON/media endpoints; token still gates protected routes
@@ -36,6 +37,7 @@ export function registerHttpRoutes(app: Express, options: MediaRouteOptions = {}
     // Feature routes must be registered before the SPA fallback below.
     registerMediaRoutes(app, options)
     registerThumbnailRoutes(app)
+    registerBootstrapRoutes(app, options)
 
     if (doesPathExist(webDir)) {
         // built web bundle takes priority (its index.html + hashed /assets/*)

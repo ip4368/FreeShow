@@ -23,6 +23,7 @@ import { canSync, getSyncTeams, hasDataChanged, hasTeamData, markAsNewSync, rest
 import { ChurchAppsChat } from "../contentProviders/churchApps/ChurchAppsChat"
 import { ContentProviderRegistry } from "../contentProviders/ContentProviderRegistry"
 import { deleteBackup, getBackups, restoreFiles } from "../data/backup"
+import { publishBootstrap } from "../data/bootstrap"
 import { getLocalIPs } from "../data/bonjour"
 import { checkIfMediaDownloaded, downloadLessonsMedia, downloadMedia } from "../data/downloadMedia"
 import { clearMediaCache, getCachedMedia, getMediaCacheStatus, prefetchCachedMedia } from "../data/mediaCache"
@@ -305,7 +306,10 @@ export const mainResponses = {
     [Main.AI_GET_STATUS]: (data) => aiGetModelStatus(data),
     [Main.AI_SETUP]: (data) => aiHandleLocalSetup(data),
     [Main.AI_SET_KEY]: (data) => setAiKey(data),
-    [Main.AI_LLM_COMPLETE]: (data) => completeLLM(data)
+    [Main.AI_LLM_COMPLETE]: (data) => completeLLM(data),
+    // Bootstrap publish (LOCAL only — pushes this machine's library to a headless
+    // server over HTTP; progress streams back via ToMain.BOOTSTRAP_PROGRESS)
+    [Main.BOOTSTRAP_PUBLISH]: (data) => publishBootstrap(data)
 } satisfies MainResponses
 
 /// ///////

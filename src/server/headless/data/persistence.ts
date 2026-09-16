@@ -10,7 +10,7 @@ import { deleteFile, doesPathExist, joinPath, loadTupleFile, parseJSON, readFile
 import type { PersistenceAdapter, RestoreResult, SaveResult } from "../../../shared/platform/Platform"
 import { zipEntries } from "../../../shared/data/zip"
 import { getDataFolderPath, getDataFolderRoot, resolveInSandbox, toSandboxRelative } from "./dataPaths"
-import { getStore, getStoreValue, setStore, setStoreValue } from "./headlessStore"
+import { getStore, getStoreValue, setStore, setStoreValue, storeRegistry } from "./headlessStore"
 import { deleteTrashPermanent, emptyTrash, isTrashRel, listTrash, restoreTrash, trashPaths } from "./trash"
 import { findMediaUsage } from "./usage"
 
@@ -224,8 +224,11 @@ function isStoreKey(key: string): boolean {
 }
 
 // mirrors storeFilesData's `portable: true` set in src/electron/data/store.ts (plus
-// SETTINGS, which desktop's startBackup() also includes outside of cloud sync)
+// SETTINGS, which desktop's startBackup() also includes outside of cloud sync).
+// MEDIA is accepted on restore (bootstrap includes it, like cloud sync) but is not
+// part of the regular backup set, matching the desktop's non-cloud backup.
 const BACKUP_STORE_KEYS = ["SETTINGS", "SYNCED_SETTINGS", "THEMES", "PROJECTS", "STAGE", "OVERLAYS", "TEMPLATES", "EVENTS"]
+const RESTORE_STORE_KEYS = [...BACKUP_STORE_KEYS, "MEDIA"]
 
 // ----- BACKUP / RESTORE (web + hybrid clients; see src/electron/data/backup.ts for the desktop equivalent) -----
 
@@ -235,6 +238,7 @@ export function restoreEntries(entries: { name: string; content: string }[]): Re
         const changed: Record<string, any> = {}
         const restoredShowIds: string[] = []
         let showsRestored = false
+        let biblesRestored = 0
 
         for (const file of entries) {
             if (!file.content) continue
@@ -263,12 +267,23 @@ export function restoreEntries(entries: { name: string; content: string }[]): Re
                 continue
             }
 
+            // bibles (cloud-sync/bootstrap naming: BIBLE_<fileName>, e.g. BIBLE_KJV.fsb)
+            if (baseName(name).startsWith("BIBLE_")) {
+                const bibleName = baseName(name).slice("BIBLE_".length)
+                if (!bibleName) continue
+                const parsed = parseJSON<[string, any]>(file.content)
+                if (!parsed?.[0]) continue
+                writeFile(joinPath(getDataFolderPath("scriptures"), bibleName), file.content)
+                biblesRestored++
+                continue
+            }
+
             // exact match on the base name, not a substring test: "SYNCED_SETTINGS.json"
             // contains "SETTINGS" as a substring, so `.includes()` would misroute it into
             // the SETTINGS store instead of SYNCED_SETTINGS (this also affects the
             // Electron desktop restore path - see src/electron/data/backup.ts restoreFiles)
             const base = baseName(name).replace(/\.json$/i, "")
-            const storeId = BACKUP_STORE_KEYS.find((id) => id === base)
+            const storeId = RESTORE_STORE_KEYS.find((id) => id === base)
             if (!storeId) continue
 
             const parsed = parseJSON<any>(file.content)
@@ -285,7 +300,7 @@ export function restoreEntries(entries: { name: string; content: string }[]): Re
 
         if (showsRestored) changed.SHOWS = loadShows()
 
-        return { finished: true, changed, restoredShowIds }
+        return { finished: true, changed, restoredShowIds, restoredBibles: biblesRestored }
     } catch (err) {
         console.error("Failed to restore entries:", err)
         return { finished: false, error: (err as Error)?.message || "restore_failed" }
@@ -295,7 +310,7 @@ export function restoreEntries(entries: { name: string; content: string }[]): Re
 export async function buildBackupZip(): Promise<Buffer> {
     const entries: { name: string; content: string }[] = []
 
-    for (const key of BACKUP_STORE_KEYS) {
+    for (const key of [...BACKUP_STORE_KEYS, "MEDIA"]) {
         entries.push({ name: key + ".json", content: JSON.stringify(getStore(key)) })
     }
 
@@ -308,7 +323,72 @@ export async function buildBackupZip(): Promise<Buffer> {
         }
     }
 
+    const biblesPath = getDataFolderPath("scriptures")
+    if (doesPathExist(biblesPath)) {
+        for (const fileName of readFolder(biblesPath)) {
+            if (!fileName.toLowerCase().endsWith(".fsb")) continue
+            const content = readFile(joinPath(biblesPath, fileName))
+            if (content) entries.push({ name: "BIBLE_" + fileName, content })
+        }
+    }
+
     return zipEntries(entries)
+}
+
+// ----- BOOTSTRAP (one-shot seed from a local client; see bootstrapRoutes.ts) -----
+
+/** Count of .show files on disk — the replace-guard signal (empty = safe to seed). */
+export function getBootstrapStatus(): { shows: number; bibles: number; empty: boolean } {
+    const showsPath = getDataFolderPath("shows")
+    const biblesPath = getDataFolderPath("scriptures")
+    let shows = 0
+    let bibles = 0
+    try {
+        if (doesPathExist(showsPath)) shows = readFolder(showsPath).filter((n) => n.toLowerCase().endsWith(".show")).length
+        if (doesPathExist(biblesPath)) bibles = readFolder(biblesPath).filter((n) => n.toLowerCase().endsWith(".fsb")).length
+    } catch {
+        // unreadable folders count as empty — restore will surface real errors
+    }
+    return { shows, bibles, empty: shows === 0 && bibles === 0 }
+}
+
+/**
+ * Delete every show + bible file and reset library stores to defaults, so a
+ * forced bootstrap replace leaves no stale files behind. Callers must invalidate
+ * resident CRDT docs for the returned show ids (see bootstrapRoutes).
+ */
+export function clearLibraryForReplace(): { clearedShows: string[] } {
+    const showsPath = getDataFolderPath("shows")
+    const clearedShows: string[] = []
+    try {
+        if (doesPathExist(showsPath)) {
+            for (const fileName of readFolder(showsPath)) {
+                if (!fileName.toLowerCase().endsWith(".show")) continue
+                const parsed = parseJSON<[string, Show]>(readFile(joinPath(showsPath, fileName)) || "")
+                if (parsed?.[0]) clearedShows.push(parsed[0])
+                deleteFile(joinPath(showsPath, fileName))
+            }
+        }
+        const biblesPath = getDataFolderPath("scriptures")
+        if (doesPathExist(biblesPath)) {
+            for (const fileName of readFolder(biblesPath)) {
+                if (!fileName.toLowerCase().endsWith(".fsb")) continue
+                deleteFile(joinPath(biblesPath, fileName))
+            }
+        }
+    } catch (err) {
+        console.error("Failed to clear library for replace:", err)
+    }
+    // reset library stores (fresh defaults keep the index consistent post-clear)
+    for (const key of [...BACKUP_STORE_KEYS, "MEDIA"]) {
+        try {
+            setStore(key, JSON.parse(JSON.stringify(storeRegistry[key]?.defaults ?? {})))
+        } catch {
+            // best-effort — restore overwrites these next
+        }
+    }
+    setStore("SHOWS", {})
+    return { clearedShows }
 }
 
 // ----- TRASH (remote drawer deletes; entries expire after 30 days) -----

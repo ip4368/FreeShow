@@ -53,6 +53,7 @@ function rememberMapping(remotePath: string, localPath: string) {
     knownLocalPaths.add(localPath)
     ownKeys.add(key)
     mapDirty = true
+    reverseDirty = true
     void scheduleMapSnapshot()
 }
 
@@ -61,6 +62,37 @@ export function resolveLocalMedia(remotePath: string): string {
     if (typeof remotePath !== "string" || !remotePath) return ""
     loadMapSnapshotIfStale()
     return localByRemote.get(normalizeKey(remotePath)) || ""
+}
+
+// ----- reverse map (cached local path -> remote path) -----
+// Hybrid outputs carry cache-local paths (getMedia resolves through the cache)
+// while drawers list server-relative paths, so highlight/active comparisons must
+// canonicalize through this reverse map. Rebuilt lazily: mutations mark it dirty
+// and the next lookup rebuilds, keeping every comparison site O(1) amortized.
+let remoteByLocal = new Map<string, string>()
+let reverseDirty = true
+
+function ensureReverseMap() {
+    if (!reverseDirty) return
+    reverseDirty = false
+    remoteByLocal = new Map()
+    for (const [remote, local] of localByRemote) {
+        if (typeof local === "string" && local) remoteByLocal.set(normalizeKey(local), remote)
+    }
+}
+
+/** Reverse lookup: cached local file -> remote library path ("" when unknown). */
+export function resolveRemoteMedia(localPath: string): string {
+    if (typeof localPath !== "string" || !localPath) return ""
+    loadMapSnapshotIfStale()
+    ensureReverseMap()
+    return remoteByLocal.get(normalizeKey(localPath)) || ""
+}
+
+/** Canonical remote form of a path that may be cache-local (identity otherwise). */
+export function toRemoteMediaPath(maybeLocal: string): string {
+    if (typeof maybeLocal !== "string" || !maybeLocal) return maybeLocal
+    return resolveRemoteMedia(maybeLocal) || maybeLocal
 }
 
 // ----- cross-window map snapshot -----
@@ -124,6 +156,7 @@ function loadMapSnapshotIfStale() {
             knownLocalPaths.clear()
             ownKeys.clear()
             resolveGeneration++
+            reverseDirty = true
         }
         const version = localStorage.getItem(MAP_VERSION_KEY) || ""
         if (!version || version === seenMapVersion) return
@@ -168,6 +201,7 @@ function loadMapSnapshotIfStale() {
             knownLocalPaths.clear()
             for (const local of localByRemote.values()) knownLocalPaths.add(local)
         }
+        reverseDirty = true
     } catch {
         // corrupt snapshot — ignore, lookups fall back to the gateway
     }
@@ -198,6 +232,7 @@ function forgetMappings(remoteKeys: string[] | null) {
         for (const local of localByRemote.values()) knownLocalPaths.add(local)
     }
     mapDirty = true
+    reverseDirty = true
     void scheduleMapSnapshot()
 }
 

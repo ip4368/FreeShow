@@ -172,6 +172,7 @@ export interface MainSendPayloads {
     [Main.AI_SETUP]: AiSetupOptions
     [Main.AI_SET_KEY]: { providerId: AIProviderId; key: string }
     [Main.AI_LLM_COMPLETE]: { providerId: AIProviderId; model: string; options: { systemPrompt?: string; prompt: string; jsonSchema?: any; temperature?: number; maxTokens?: number } }
+    [Main.BOOTSTRAP_PUBLISH]: { serverUrl: string; token?: string; destFolder?: string; audioDestFolder?: string; includeMedia?: boolean; includeBibles?: boolean; replace?: boolean }
 }
 
 export interface MainReturnPayloads {
@@ -297,6 +298,7 @@ export interface MainReturnPayloads {
     [Main.AI_SETUP]: Promise<boolean>
     [Main.AI_SET_KEY]: Promise<boolean>
     [Main.AI_LLM_COMPLETE]: Promise<{ text: string; error?: string; code?: string; retryAfter?: number }>
+    [Main.BOOTSTRAP_PUBLISH]: Promise<{ success: boolean; error?: string; status?: { shows: number; bibles: number; empty: boolean }; shows?: number; bibles?: number; replaced?: boolean; media?: { uploaded: number; skipped: number; failed: { path: string; reason: string }[]; bytes: number } }>
 }
 
 ///////////

@@ -20,6 +20,7 @@ import { Server } from "socket.io"
 import { setAuthToken, socketAuth } from "./auth"
 import type { CliArgs, ServerConfig } from "./config"
 import { parseArgs, resolveConfig } from "./config"
+import { invalidateDoc } from "./crdt/docRegistry"
 import { getDataFolderRoot, setDataRoot } from "./data/dataPaths"
 import { getMediaLibraryVersion } from "./data/libraryVersion"
 import { startTrashSweep } from "./data/trash"
@@ -115,7 +116,16 @@ export function startHeadlessServer(args: CliArgs = {}) {
         // uploads arrive over HTTP (not the socket), so the route can't broadcast
         // itself — bridge each landed upload into the same live-refresh channel
         // the trash mutations use (mirrors the sweep callback below)
-        onUpload: (rel) => io.emit("MAIN", { data: { channel: "MEDIA_LIBRARY_CHANGED", data: { kind: "uploaded", paths: [rel], v: getMediaLibraryVersion() } } })
+        onUpload: (rel) => io.emit("MAIN", { data: { channel: "MEDIA_LIBRARY_CHANGED", data: { kind: "uploaded", paths: [rel], v: getMediaLibraryVersion() } } }),
+        // bootstrap restore lands over HTTP too — invalidate touched docs (stale
+        // in-memory state must not clobber the restored files) and push the new
+        // library state to every client, exactly like RESTORE_UPLOAD does
+        onRestore: (result) => {
+            for (const showId of [...(result.restoredShowIds || []), ...(result.clearedShows || [])]) invalidateDoc(showId)
+            for (const [channel, value] of Object.entries(result.changed || {})) {
+                io.emit("MAIN", { data: { channel, data: value } })
+            }
+        }
     })
 
     io.use(socketAuth)

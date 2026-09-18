@@ -1,5 +1,6 @@
 import { get } from "svelte/store"
 import { uid } from "uid"
+import { pruneShowMedia } from "../../../shared/media/collectShowMedia"
 import type { Item, Slide, SlideData, Template } from "../../../types/Show"
 import { breakLongLines, removeItemValues } from "../../show/slides"
 import { activeEdit, activePage, activePopup, activeProject, activeShow, alertMessage, cachedShowsData, deletedShows, groups, notFound, projects, refreshEditSlide, renamedShows, shows, showsCache, templates } from "../../stores"
@@ -363,6 +364,19 @@ async function handleShows(obj, _data, initializing) {
     }
 }
 
+/**
+ * Drop show.media entries nothing references anymore (shared helper for the
+ * delete/replace paths that used to orphan them). No-op when everything is
+ * still referenced. Callers must ensure undo-safety (slide deletes snapshot
+ * the map first; background replaces re-derive from paths on redo).
+ */
+export function pruneUnreachableShowMedia(showId: string) {
+    const show = _show(showId).get()
+    if (!show) return
+    const { media, pruned } = pruneShowMedia(show)
+    if (pruned.length) _show(showId).set({ key: "media", value: media })
+}
+
 function handleSlides(obj, data, initializing) {
     const deleting = !!obj.oldData
     data = (deleting ? obj.oldData : obj.newData) || {}
@@ -417,6 +431,10 @@ function handleSlides(obj, data, initializing) {
                 .slides(data.data.map((a) => a.id))
                 .remove()
         }
+        // drop media-map entries the removed slides orphaned (undo-safe:
+        // previousData.media above holds the pre-delete map and is restored
+        // wholesale, so redo/undo never lose a referenced entry)
+        pruneUnreachableShowMedia(showId)
     } else {
         setTimeout(
             () =>

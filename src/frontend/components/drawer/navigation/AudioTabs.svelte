@@ -1,22 +1,27 @@
 <script lang="ts">
-    import { onDestroy } from "svelte"
+    import { onDestroy, onMount } from "svelte"
     import { uid } from "uid"
     import { Main } from "../../../../types/IPC/Main"
     import { ToMain } from "../../../../types/IPC/ToMain"
     import { AudioPlaylist } from "../../../audio/audioPlaylist"
     import { destroyMain, receiveToMain, requestMain, sendMain } from "../../../IPC/main"
-    import { activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media } from "../../../stores"
+    import { activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, mediaLibraryVersion, popupData } from "../../../stores"
+    import { isSocketTransport } from "../../../IPC/transport"
     import { getAccess } from "../../../utils/profile"
     import { keysToID, sortObject } from "../../helpers/array"
+    import { listTrashEntries } from "../../../utils/trash"
     import { addDrawerFolder } from "../../helpers/dropActions"
     import Icon from "../../helpers/Icon.svelte"
-    import { countFolderMediaItems } from "../../helpers/media"
+    import { countFolderMediaItems, getExtension, getMediaType } from "../../helpers/media"
     import T from "../../helpers/T.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import NavigationSections from "./NavigationSections.svelte"
 
     const profile = getAccess("audio")
     $: readOnly = profile.global === "read"
+
+    // when connected to a server, browse/create SERVER folders (so audio syncs) instead of a local dialog
+    const remoteLibrary = isSocketTransport()
 
     $: activeSubTab = $drawerTabsData.audio?.activeSubTab || ""
 
@@ -45,6 +50,16 @@
     $: playlists = !!Object.keys($audioPlaylists).length
     // ...(playlists ? [getAudioPlaylists($audioPlaylists)] : []),
 
+    // server trash badge (remote only): audio files + folders (folders may hold mixed content)
+    let trashCount = 0
+    async function updateTrashCount() {
+        if (!remoteLibrary) return
+        const { entries } = await listTrashEntries()
+        trashCount = entries.filter((e) => e.isFolder || getMediaType(getExtension(e.name)) === "audio").length
+    }
+    onMount(() => void updateTrashCount())
+    $: if ($mediaLibraryVersion.n) void updateTrashCount()
+
     let sections: any[] = []
     $: sections = [
         [
@@ -54,7 +69,8 @@
         [{ id: "inputs", label: "emitters.inputs", icon: "input" }, "SEPARATOR", { id: "metronome", label: "audio.metronome", icon: "metronome" }],
         [{ id: "effects_library", label: "category.sound_effects", icon: "effect", count: effectsLength, hidden: !effectsLength && activeSubTab !== "effects_library" }],
         [{ id: "TITLE", label: "audio.playlists" }, ...getAudioPlaylists($audioPlaylists)],
-        [{ id: "TITLE", label: "media.folders" }, ...convertToButton(foldersList, folderLengths)]
+        [{ id: "TITLE", label: "media.folders" }, ...convertToButton(foldersList, folderLengths)],
+        ...(remoteLibrary ? [[{ id: "trash", label: "category.trash", icon: "delete", count: trashCount }]] : [])
     ]
 
     function getAudioPlaylists(playlistUpdater) {
@@ -79,6 +95,11 @@
     const PICK_ID = uid()
     function addFolder() {
         sendMain(Main.OPEN_FOLDER, { channel: PICK_ID })
+    }
+    // remote clients browse the server's folders instead of a native OS dialog
+    function addServerFolder() {
+        popupData.set({ type: "audio" })
+        activePopup.set("remote_folder")
     }
     let listenerId = receiveToMain(ToMain.OPEN_FOLDER2, (data) => {
         if (data.channel !== PICK_ID || !data.path) return
@@ -128,9 +149,16 @@
         </MaterialButton>
     </div>
     <div slot="section_4" style="padding: 8px;{foldersList.length ? 'padding-top: 12px;' : ''}">
-        <MaterialButton style="width: 100%;" title="new.system_folder" variant="outlined" disabled={readOnly} on:click={addFolder} small>
-            <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
-            {#if !$labelsDisabled}<T id="new.system_folder" />{/if}
-        </MaterialButton>
+        {#if !remoteLibrary}
+            <MaterialButton style="width: 100%;" title="new.system_folder" variant="outlined" disabled={readOnly} on:click={addFolder} small>
+                <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
+                {#if !$labelsDisabled}<T id="new.system_folder" />{/if}
+            </MaterialButton>
+        {:else}
+            <MaterialButton style="width: 100%;" title="new.folder" variant="outlined" disabled={readOnly} on:click={addServerFolder} small>
+                <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
+                {#if !$labelsDisabled}<T id="new.folder" />{/if}
+            </MaterialButton>
+        {/if}
     </div>
 </NavigationSections>

@@ -1,4 +1,5 @@
 import { get } from "svelte/store"
+import { pruneShowMedia } from "../../shared/media/collectShowMedia"
 import { Main } from "../../types/IPC/Main"
 import type { Projects } from "../../types/Projects"
 import type { Shows } from "../../types/Show"
@@ -8,6 +9,7 @@ import { stopMediaRecorder } from "../components/drawer/live/recorder"
 import { stopAllInteractions } from "../components/drawer/pages/interactions"
 import { clone, keysToID, removeDeleted } from "../components/helpers/array"
 import { isOutCleared } from "../components/helpers/output"
+import { isSocketTransport } from "../IPC/transport"
 import { sendMain } from "../IPC/main"
 import {
     actionTags,
@@ -213,6 +215,16 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
         syncedSettings[key] = get(store)
     })
 
+    // On a remote client the media/audio library belongs to the SERVER, so persist the
+    // folder lists there (SYNCED_SETTINGS is remote) instead of into this machine's
+    // local SETTINGS — that way they survive restarts and reach other clients.
+    if (isSocketTransport()) {
+        syncedSettings.mediaFolders = settings.mediaFolders
+        syncedSettings.audioFolders = settings.audioFolders
+        delete settings.mediaFolders
+        delete settings.audioFolders
+    }
+
     const allSavedData: SaveData = {
         // SETTINGS
         SETTINGS: settings,
@@ -243,6 +255,15 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
     }
 
     const saveData = clone(allSavedData)
+
+    // drop orphaned media-map entries from the saved copy (historical orphans
+    // from before delete-time pruning; the live shows are untouched — only
+    // what hits the disk is swept)
+    for (const show of Object.values(saveData.showsCache || {})) {
+        if (!show) continue
+        const { media, pruned } = pruneShowMedia(show)
+        if (pruned.length) show.media = media
+    }
 
     deletedShows.set([])
     renamedShows.set([])

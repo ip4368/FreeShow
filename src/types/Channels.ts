@@ -14,8 +14,9 @@ export const NDI = "NDI"
 export const OMT = "OMT"
 export const BLACKMAGIC = "BLACKMAGIC"
 export const AUDIO = "AUDIO"
+export const YJS = "YJS"
 
-export type ValidChannels = "STARTUP" | "MAIN" | "OUTPUT" | "EXPORT" | "REMOTE" | "STAGE" | "CONTROLLER" | "OUTPUT_STREAM" | "CLOUD" | "NDI" | "OMT" | "BLACKMAGIC" | "AUDIO"
+export type ValidChannels = "STARTUP" | "MAIN" | "OUTPUT" | "EXPORT" | "REMOTE" | "STAGE" | "CONTROLLER" | "OUTPUT_STREAM" | "CLOUD" | "NDI" | "OMT" | "BLACKMAGIC" | "AUDIO" | "YJS"
 
 export type Data = string | DataObject
 export interface DataObject {

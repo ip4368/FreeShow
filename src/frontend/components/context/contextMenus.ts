@@ -43,6 +43,7 @@ export const contextMenuItems: { [key: string]: ContextMenuItem } = {
     shortcuts: { label: "popup.shortcuts", icon: "shortcut", shortcuts: ["Ctrl+?"] },
     rename: { label: "actions.rename", icon: "rename", iconColor: "#6effbe", shortcuts: ["F2"] },
     delete: { label: "actions.delete", icon: "delete", iconColor: "#ff5454", shortcuts: ["Del"] },
+    delete_media_files: { label: "actions.delete", icon: "delete", iconColor: "#ff5454", shortcuts: ["Del"] },
     delete_remove: { label: "actions.remove", icon: "delete", iconColor: "#ff6b54", shortcuts: ["Del"] },
     delete_all: { label: "actions.delete_all", icon: "delete", iconColor: "#ff5454" },
     delete_row: { label: "actions.delete_row", icon: "delete", iconColor: "#ff5454" },
@@ -290,7 +291,7 @@ export const contextMenuLayouts: { [key: string]: string[] } = {
     // , "addToShow"
     // show_in_explorer!!
     media: ["manage_media_tags", "media_tag_filter", "sort_media_by", "media_view"],
-    media_card: ["GROUP_open", "createSlideshow", "play_no_audio", "play_no_filters", "SEPARATOR", "favourite", "SEPARATOR", "media_tag_set", "media_tag_filter", "sort_media_by", "SEPARATOR", "system_open"],
+    media_card: ["GROUP_open", "createSlideshow", "play_no_audio", "play_no_filters", "SEPARATOR", "favourite", "SEPARATOR", "media_tag_set", "media_tag_filter", "sort_media_by", "SEPARATOR", "system_open", "delete_media_files"],
     // "addToFirstSlide",
     drawer_overlays: ["reset_defaults"],
     overlay_card: ["GROUP_open", "overlay_actions", "display_duration", "SEPARATOR", "lock_to_output", "place_under_slide", "SEPARATOR", "rename", "recolor", "duplicate", "delete"], // "GROUP_rename_color"
@@ -305,7 +306,7 @@ export const contextMenuLayouts: { [key: string]: string[] } = {
     effect_card_default: ["GROUP_open", "duplicate", "delete"],
     player: ["manage_player_tags", "player_tag_filter"],
     player_button: ["GROUP_open", "player_tag_set", "player_tag_filter", "SEPARATOR", "rename", "delete"],
-    audio_button: ["GROUP_open", "effects_library_add", "favourite", "SEPARATOR", "system_open"],
+    audio_button: ["GROUP_open", "effects_library_add", "favourite", "SEPARATOR", "system_open", "delete_media_files"],
     audio_effect_button: ["GROUP_rename_only", "remove", "SEPARATOR", "system_open"],
     audio_button_playlist: ["GROUP_open", "remove"],
     // "addToFirstSlide"

@@ -24,6 +24,7 @@ import { clearBackground, clearSlide } from "../output/clear"
 import { areObjectsEqual, clone, keysToID, removeDuplicates, sortByName, sortObject } from "./array"
 import { getExtension, getFileName, getMediaLayerType, getMediaType, removeExtension } from "./media"
 import { createDestination, hasStreamableDestination } from "./rtmpDestinations"
+import { toRemoteMediaPath } from "../../utils/remoteMediaCache"
 import { getLayoutRef } from "./show"
 import { getFewestOutputLines, getItemWithMostLines } from "./showActions"
 import { _show } from "./shows"
@@ -518,7 +519,10 @@ export function findMatchingOut(id: string, updater: Outputs = get(outputs)): st
         const output = updater[outputId]
         if (match === null && output.enabled) {
             if (output.out?.slide?.id === id) match = output.color
-            else if ((output.out?.background?.path || output.out?.background?.id) === id) match = output.color
+            // outputs may carry cache-local paths on hybrid desktops while drawers
+            // list server-relative paths — compare canonical remote forms (identity
+            // on local/web clients, where the cache map is empty)
+            else if (id && toRemoteMediaPath(output.out?.background?.path || output.out?.background?.id || "") === toRemoteMediaPath(id)) match = output.color
             else if (output.out?.overlays?.includes(id)) match = output.color
             else if (output.out?.effects?.includes(id)) match = output.color
         }

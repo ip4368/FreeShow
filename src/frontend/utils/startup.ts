@@ -5,8 +5,11 @@ import { Main } from "../../types/IPC/Main"
 import { checkStartupActions } from "../components/actions/actions"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMain, requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
+import { isSocketTransport } from "../IPC/transport"
+import { initCrdtClient } from "./crdt/crdtClient"
+import { initRemoteMediaCache, warmCacheDirPrefix } from "./remoteMediaCache"
 import { cameraManager } from "../media/cameraManager"
-import { activePopup, activeProfile, alertMessage, cachePath, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, profiles, providerConnections, shows, special, version, windowState } from "../stores"
+import { activePopup, activeProfile, alertMessage, cachePath, capabilities, cloudSyncData, contentProviderData, currentWindow, dataPath, deviceId, driveKeys, isDev, loaded, loadedState, os, profiles, providerConnections, shows, special, version, windowState } from "../stores"
 import { startTracking } from "./analytics"
 import { wait, waitUntilValueIsDefined } from "./common"
 import { getDefaultElements } from "./createData"
@@ -15,7 +18,7 @@ import { setupCloudSync } from "./cloudSync"
 import { storeSubscriber } from "./listeners"
 import { autoOpenLastUsedProfile, openProfileByName } from "./profile"
 import { receiveOUTPUTasOUTPUT, remoteListen, setupMainReceivers } from "./receivers"
-import { destroy, receive, send } from "./request"
+import { receive, send } from "./request"
 import { save, unsavedUpdater } from "./save"
 
 let initialized = false
@@ -31,9 +34,18 @@ export async function startup() {
     window.api.receive(
         STARTUP,
         (msg) => {
-            if (initialized || msg.channel !== "TYPE") return
-            initialized = true // only call this once per window
-            destroy(STARTUP, "startup")
+            if (msg.channel !== "TYPE") return
+            // repeat STARTUP (the transport re-requests it on every reconnect):
+            // refresh capabilities, then return — never re-run startupMain
+            // (co-editing docs + the media cache rejoin via connectionStatus)
+            if (initialized) {
+                if (msg.capabilities) capabilities.set(msg.capabilities)
+                return
+            }
+            initialized = true // only run full startup once per window
+
+            // backend advertises which platform features are available (headless/web hides desktop-only ones)
+            if (msg.capabilities) capabilities.set(msg.capabilities)
 
             const type = msg.data
             currentWindow.set(type)
@@ -57,6 +69,10 @@ export async function startup() {
 async function startupMain() {
     setLanguage("", true)
     setupMainReceivers()
+    // real-time co-editing bridge (web/remote clients only)
+    if (isSocketTransport()) initCrdtClient()
+    // project-level media prefetch so shows play from local disk on slow links
+    if (isSocketTransport()) initRemoteMediaCache()
     getMainData()
 
     await wait(50)
@@ -194,6 +210,10 @@ async function getStoredData() {
 async function startupOutput() {
     setLanguage() // this is only needed for the context menu (and stage display)
     receive(OUTPUT, receiveOUTPUTasOUTPUT)
+
+    // output windows play cached files handed to them by the main window — learn the
+    // cache-dir prefix so those absolute paths aren't mistaken for server paths
+    if (isSocketTransport()) void warmCacheDirPrefix()
 
     // wait a bit on slow computers
     await wait(200)

@@ -3,8 +3,9 @@
     import { Main } from "../../../../types/IPC/Main"
     import type { ShowRef } from "../../../../types/Projects"
     import { requestMain, sendMain } from "../../../IPC/main"
-    import { activeShow, os, outLocked, outputs, presentationApps, presentationData, special } from "../../../stores"
+    import { activeShow, capabilities, os, outLocked, outputs, presentationApps, presentationData, special } from "../../../stores"
     import { translateText } from "../../../utils/language"
+    import { ensureLocalMedia } from "../../../utils/remoteMediaCache"
     import Icon from "../../helpers/Icon.svelte"
     import { getFileName, removeExtension } from "../../helpers/media"
     import { getActiveOutputs, getOutputContent, setOutput } from "../../helpers/output"
@@ -25,13 +26,17 @@
 
     let opening = false
     let retry = false
-    function newPresentation() {
-        if ($outLocked) return
+    // the path the presentation app was asked to open (a cached local copy on hybrid
+    // clients — the main process echoes this exact path back in presentationData.id)
+    let launchPath = ""
+    async function newPresentation() {
+        if ($outLocked || opening) return
 
         reset()
         opening = true
 
-        sendMain(Main.START_SLIDESHOW, { path: show.id, program: $special.presentationApp || "PowerPoint" })
+        launchPath = (await ensureLocalMedia(show.id).catch(() => null)) || show.id
+        sendMain(Main.START_SLIDESHOW, { path: launchPath, program: $special.presentationApp || "PowerPoint" })
         clearSlide()
 
         setTimeout(() => (opening ? (retry = true) : ""), 8000)
@@ -49,7 +54,7 @@
 
     $: outSlide = getOutputContent("", $outputs)
 
-    $: if (opening && $presentationData?.id === show.id) start()
+    $: if (opening && launchPath && ($presentationData?.id === launchPath || $presentationData?.id === show.id)) start()
     function start() {
         let name = show.name || removeExtension(getFileName(show.id))
         setOutput("slide", { type: "ppt", id: show.id, name, page: $presentationData.stat?.position - 1, pages: $presentationData.stat?.slides })
@@ -80,76 +85,79 @@
 
 <svelte:window on:keydown={keydown} />
 
-{#if $presentationApps === null}
-    <Center faded><T id="remote.loading" /></Center>
-{:else if !$presentationApps.length}
-    <Center>
-        <T id="presentation_control.unsupported" />
-        {$os.platform || "this OS"}.
-        <br />
-        <T id="presentation_control.unsupported_tip" />
-    </Center>
-{:else if outSlide?.id === show.id}
-    <div class="fill">
-        <ScreenCapture path={show.id} />
-    </div>
+<!-- controlling PowerPoint/Keynote requires them installed on this machine -->
+{#if $capabilities.presentationControl}
+    {#if $presentationApps === null}
+        <Center faded><T id="remote.loading" /></Center>
+    {:else if !$presentationApps.length}
+        <Center>
+            <T id="presentation_control.unsupported" />
+            {$os.platform || "this OS"}.
+            <br />
+            <T id="presentation_control.unsupported_tip" />
+        </Center>
+    {:else if outSlide?.id === show.id}
+        <div class="fill">
+            <ScreenCapture path={show.id} presentationId={launchPath || show.id} />
+        </div>
 
-    {#if $presentationData?.id === show.id && $presentationData?.stat?.slides}
-        <div class="info">
-            <Button on:click={restartPresentation} title={translateText("presentation_control.restart")}>
-                <Icon id="refresh" />
-            </Button>
-            <p style="white-space: normal;overflow: auto;padding: 3px 8px;">
-                <b>{$presentationData.info?.titles?.[$presentationData.stat?.position - 1] || ""}</b>
-                <span style="padding-inline-start: 10px;">{$presentationData.info?.notes[$presentationData.stat?.position - 1] || ""}</span>
-            </p>
+        {#if ($presentationData?.id === show.id || $presentationData?.id === launchPath) && $presentationData?.stat?.slides}
+            <div class="info">
+                <Button on:click={restartPresentation} title={translateText("presentation_control.restart")}>
+                    <Icon id="refresh" />
+                </Button>
+                <p style="white-space: normal;overflow: auto;padding: 3px 8px;">
+                    <b>{$presentationData.info?.titles?.[$presentationData.stat?.position - 1] || ""}</b>
+                    <span style="padding-inline-start: 10px;">{$presentationData.info?.notes[$presentationData.stat?.position - 1] || ""}</span>
+                </p>
+            </div>
+        {/if}
+    {:else if opening}
+        <Center>
+            <p><T id="presentation_control.opening" /></p>
+            {#if retry}
+                <br />
+                <T id="presentation_control.retry" />
+                <Button on:click={newPresentation} style="margin-top: 8px;"><T id="presentation_control.try_again" /></Button>
+            {/if}
+        </Center>
+    {:else}
+        <div style="display: flex;flex-direction: column;height: 100%;">
+            <Dropdown
+                options={$presentationApps.map((id) => ({ name: id }))}
+                value={$special.presentationApp || "PowerPoint"}
+                on:click={(e) => {
+                    special.update((a) => {
+                        a.presentationApp = e.detail?.name
+                        return a
+                    })
+                }}
+            />
+
+            <div class="fill">
+                <Button on:click={newPresentation} style="font-size: 4em;width: 100%;" center>
+                    <Icon id="play" size={6} right />
+                    <T id="presentation_control.start" />
+                </Button>
+            </div>
         </div>
     {/if}
-{:else if opening}
-    <Center>
-        <p><T id="presentation_control.opening" /></p>
-        {#if retry}
-            <br />
-            <T id="presentation_control.retry" />
-            <Button on:click={newPresentation} style="margin-top: 8px;"><T id="presentation_control.try_again" /></Button>
-        {/if}
-    </Center>
-{:else}
-    <div style="display: flex;flex-direction: column;height: 100%;">
-        <Dropdown
-            options={$presentationApps.map((id) => ({ name: id }))}
-            value={$special.presentationApp || "PowerPoint"}
-            on:click={(e) => {
-                special.update((a) => {
-                    a.presentationApp = e.detail?.name
-                    return a
-                })
-            }}
-        />
 
-        <div class="fill">
-            <Button on:click={newPresentation} style="font-size: 4em;width: 100%;" center>
-                <Icon id="play" size={6} right />
-                <T id="presentation_control.start" />
-            </Button>
-        </div>
-    </div>
+    <style>
+        .fill {
+            position: relative;
+            height: 100%;
+
+            display: flex;
+            /* align-items: center; */
+        }
+
+        .info {
+            width: 100%;
+            max-height: 60%;
+            background-color: var(--primary-darkest);
+
+            display: flex;
+        }
+    </style>
 {/if}
-
-<style>
-    .fill {
-        position: relative;
-        height: 100%;
-
-        display: flex;
-        /* align-items: center; */
-    }
-
-    .info {
-        width: 100%;
-        max-height: 60%;
-        background-color: var(--primary-darkest);
-
-        display: flex;
-    }
-</style>

@@ -12,6 +12,8 @@ import { AudioMicrophone } from "../../audio/audioMicrophone"
 import { AudioPlayer } from "../../audio/audioPlayer"
 import { requestMain, sendMain } from "../../IPC/main"
 import { isMainWindow, isOutputWindow } from "../../utils/common"
+import { isRemoteMedia } from "../../utils/mediaGateway"
+import { resolveProbePath } from "../../utils/remoteMediaCache"
 import { send } from "../../utils/request"
 import { convertRSSToString, getRSS } from "../../utils/rss"
 import { runAction, slideHasAction } from "../actions/actions"
@@ -1488,13 +1490,37 @@ function getExifData(backgroundPath: string, key: string, parent: string = "exif
 }
 
 const exifCache: Map<string, ExifData> = new Map()
+// in-flight + recent-miss guards: getExif is called from render paths and would
+// otherwise re-probe on every evaluation while the result is pending/absent
+const exifPending = new Set<string>()
+const exifMissAt = new Map<string, number>()
+const EXIF_MISS_TTL_MS = 30000
 function getExif(path: string) {
     if (exifCache.has(path)) return exifCache.get(path)!
+    if (exifPending.has(path)) return null
+    const missAt = exifMissAt.get(path)
+    if (missAt && Date.now() - missAt < EXIF_MISS_TTL_MS) return null
+    exifPending.add(path)
 
-    requestMain(Main.READ_EXIF, { id: path }, (data) => {
-        if (!data?.exif) return
-        exifCache.set(path, data.exif)
-    })
+    const done = (exif?: ExifData) => {
+        exifPending.delete(path)
+        if (exif) exifCache.set(path, exif)
+        else exifMissAt.set(path, Date.now())
+    }
+
+    // Remote library files live on the server: read EXIF from the persistent local
+    // cache copy when available, otherwise skip (probing the server path locally fails).
+    if (isRemoteMedia()) {
+        resolveProbePath(path)
+            .then((probePath) => {
+                if (!probePath) return done()
+                requestMain(Main.READ_EXIF, { id: probePath }, (data) => done(data?.exif || undefined))
+            })
+            .catch(() => done())
+        return null
+    }
+
+    requestMain(Main.READ_EXIF, { id: path }, (data) => done(data?.exif || undefined))
 
     return null
 }

@@ -1,0 +1,116 @@
+// ----- FreeShow -----
+// Socket.IO <-> handler bridge for the headless server. This is the headless
+// mirror of src/electron/IPC/main.ts:receiveMain — it dispatches each MAIN
+// envelope to the portable handler table and replies over the same channel,
+// preserving the listenerId so the client's requestMain() correlation works.
+
+import type { Server, Socket } from "socket.io"
+import { createPortableResponses } from "../../shared/ipc/createPortableResponses"
+import { HEADLESS_CAPABILITIES } from "../../shared/platform/capabilities"
+import { Main } from "../../types/IPC/channels"
+import { invalidateDoc } from "./crdt/docRegistry"
+import { handleYjsMessage } from "./crdt/relay"
+import { getMediaLibraryVersion } from "./data/libraryVersion"
+import { headlessPlatform } from "./platform/headlessPlatform"
+
+const responses = {
+    ...createPortableResponses(headlessPlatform),
+    [Main.MAXIMIZED]: () => false,
+    [Main.MAXIMIZE]: () => undefined,
+    [Main.MINIMIZE]: () => undefined,
+    [Main.FULLSCREEN]: () => undefined,
+    [Main.CLOSE]: () => undefined
+}
+
+interface MainEnvelope {
+    data: { channel: string; data: any }
+    listenerId?: string
+}
+
+// mirrors the STARTUP {channel:"TYPE"} message the desktop main sends on did-finish-load
+function startupPayload() {
+    return { data: { channel: "TYPE", data: null, autoProfile: "", capabilities: HEADLESS_CAPABILITIES, mediaLibraryVersion: getMediaLibraryVersion() } }
+}
+
+// trash mutations and the MEDIA_LIBRARY_CHANGED kind each one broadcasts
+const TRASH_BROADCASTS: Record<string, string> = {
+    TRASH_FILES: "trashed",
+    TRASH_RESTORE: "restored",
+    TRASH_DELETE: "deleted",
+    TRASH_EMPTY: "emptied"
+}
+
+export function registerClient(io: Server, socket: Socket) {
+    const sendStartup = () => socket.emit("STARTUP", startupPayload())
+
+    // client asks for STARTUP on every (re)connect; also push once immediately
+    socket.on("STARTUP_REQUEST", sendStartup)
+    sendStartup()
+
+    // real-time co-editing (Yjs)
+    socket.on("YJS", (payload) => handleYjsMessage(io, socket, payload))
+
+    socket.on("MAIN", async (payload: MainEnvelope) => {
+        const inner = payload?.data
+        if (!inner?.channel) return
+
+        // requests (requestMain) carry a listenerId and must always get a reply:
+        // resolving null fails fast instead of hanging until the client timeout.
+        // One-way sends (sendMain) stay silent, like the Electron main.
+        const replyId = payload.listenerId
+        const replyNull = () => {
+            if (replyId) socket.emit("MAIN", { data: { channel: inner.channel, data: null }, listenerId: replyId })
+        }
+
+        const handler = (responses as Record<string, (d?: any) => any>)[inner.channel]
+        if (!handler) return replyNull() // unhandled channel (e.g. Electron-only) -> fail fast, don't hang
+
+        try {
+            // TRASH: reply to the actor, then broadcast to EVERY client (including
+            // the actor) so all drawers + trash views refresh. deletedBy is
+            // best-effort: the socket address, unless the client sent a label.
+            const trashKind = TRASH_BROADCASTS[inner.channel]
+            if (trashKind) {
+                const input = inner.data && typeof inner.data === "object" ? inner.data : {}
+                if (inner.channel === "TRASH_FILES" && !input.deletedBy) input.deletedBy = socket.handshake.address
+                const trashResult = (await handler(input)) || {}
+                socket.emit("MAIN", { data: { channel: inner.channel, data: trashResult }, listenerId: payload.listenerId })
+                io.emit("MAIN", { data: { channel: "MEDIA_LIBRARY_CHANGED", data: { kind: trashKind, v: getMediaLibraryVersion(), paths: trashResult.paths || [] } } })
+                return
+            }
+
+            const response = await handler(inner.data)
+
+            // SAVE: reply completion to the saver, and push changed library stores to
+            // OTHER clients so new shows/projects/overlays appear live in every session.
+            if (inner.channel === "SAVE") {
+                const result = response || {}
+                socket.emit("MAIN", { data: { channel: "SAVE2", data: result.complete || {} } })
+                for (const [channel, value] of Object.entries(result.changed || {})) {
+                    socket.broadcast.emit("MAIN", { data: { channel, data: value } })
+                }
+                return
+            }
+
+            // RESTORE_UPLOAD: reply completion to the uploader, but broadcast the changed
+            // library stores (SHOWS index + any restored resource stores) to EVERY client
+            // including the uploader - unlike SAVE, the uploader doesn't already have this
+            // state locally (it was just written to disk by the restore).
+            if (inner.channel === "RESTORE_UPLOAD") {
+                const result = response || {}
+                socket.emit("MAIN", { data: { channel: inner.channel, data: { finished: !!result.finished, error: result.error } }, listenerId: payload.listenerId })
+                for (const showId of result.restoredShowIds || []) invalidateDoc(showId)
+                for (const [channel, value] of Object.entries(result.changed || {})) {
+                    io.emit("MAIN", { data: { channel, data: value } })
+                }
+                return
+            }
+
+            if (response === undefined) return replyNull()
+            socket.emit("MAIN", { data: { channel: inner.channel, data: response }, listenerId: replyId })
+        } catch (err) {
+            console.error(`Headless handler error for ${inner.channel}:`, err)
+            replyNull()
+        }
+    })
+}

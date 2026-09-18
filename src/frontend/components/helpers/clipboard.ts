@@ -7,6 +7,7 @@ import type { Item } from "../../../types/Show"
 import { removeOutputAudioChannel } from "../../audio/routing/audioRoutingInit"
 import { getProjectsInFolder } from "../../converters/project"
 import { sendMain } from "../../IPC/main"
+import { isSocketTransport } from "../../IPC/transport"
 import {
     actions,
     activeDays,
@@ -62,6 +63,7 @@ import {
 import { newToast, setStatus, triggerFunction } from "../../utils/common"
 import { translateText } from "../../utils/language"
 import { confirmCustom } from "../../utils/popup"
+import { trashPathsWithConfirm } from "../../utils/trash"
 import { copyFromTextField, isFormField } from "../../utils/shortcutsHelper"
 import { removeSlide } from "../context/menuClick"
 import { deleteTimer } from "../drawer/timers/timers"
@@ -789,9 +791,25 @@ const deleteActions = {
             return a
         })
     },
+    media: (data: any) => {
+        // remote-only: move drawer files to the server trash (local clients use the OS explorer)
+        if (!isSocketTransport()) return false
+        const paths = (data || []).map((a) => a?.path).filter(Boolean)
+        if (!paths.length) return false
+        void trashPathsWithConfirm(paths)
+    },
     audio: (data: any) => {
-        // remove audio from playlist
         const activePlaylist = get(drawerTabsData).audio?.activeSubTab || ""
+        // drawer file browsing (not a playlist): remote clients trash the files
+        if (!get(audioPlaylists)[activePlaylist]) {
+            if (!isSocketTransport()) return
+            const paths = (data || []).map((a) => a?.path).filter(Boolean)
+            if (!paths.length) return false
+            void trashPathsWithConfirm(paths)
+            return
+        }
+
+        // remove audio from playlist
         if (!activePlaylist) return
 
         audioPlaylists.update((a) => {

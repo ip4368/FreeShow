@@ -10,6 +10,7 @@ import { duplicateEffectInStack, removeEffectFromStack } from "../../audio/effec
 import { ShowObj } from "../../classes/Show"
 import { markItemsAsPlayed } from "../../converters/project"
 import { sendMain } from "../../IPC/main"
+import { isSocketTransport } from "../../IPC/transport"
 import { cameraManager } from "../../media/cameraManager"
 import { changeSlideGroups, mergeSlides, mergeTextboxes, splitItemInTwo, VIRTUAL_BREAK_CHAR } from "../../show/slides"
 import {
@@ -93,6 +94,7 @@ import { translateText } from "../../utils/language"
 import { confirmCustom } from "../../utils/popup"
 import { send } from "../../utils/request"
 import { initializeClosing, save } from "../../utils/save"
+import { trashPathsWithConfirm } from "../../utils/trash"
 import { updateThemeValues } from "../../utils/updateSettings"
 import { getActionTriggerId } from "../actions/actions"
 import { moveStageConnection } from "../actions/apiHelper"
@@ -1713,6 +1715,12 @@ const clickActions = {
         if (!path) return
 
         sendMain(Main.SYSTEM_OPEN, path)
+    },
+    delete_media_files: (obj: ObjData) => {
+        // remote-only (the menu item is hidden locally): move to server trash
+        if (!isSocketTransport()) return
+        const paths = (obj.sel?.data || []).map((a) => a?.path).filter(Boolean)
+        if (paths.length) void trashPathsWithConfirm(paths)
     },
 
     // media type

@@ -5,12 +5,16 @@
     import type { ClickEvent, FileFolder } from "../../../../types/Main"
     import { requestMain } from "../../../IPC/main"
     import { addProjectItem } from "../../../converters/project"
-    import { activeDrawerTab, activeEdit, activeFocus, activeMediaTagFilter, activePopup, activeShow, audioFolders, cloudSyncData, drawerTabsData, focusMode, labelsDisabled, media, mediaFolders, mediaOptions, openedMediaFolders, outLocked, outputs, popupData, providerConnections, selectAllMedia, selected, sorted, special, styles } from "../../../stores"
+    import { activeDrawerTab, activeEdit, activeFocus, activeMediaTagFilter, activePopup, activeShow, audioFolders, capabilities, cloudSyncData, drawerTabsData, focusMode, labelsDisabled, media, mediaFolders, mediaLibraryVersion, mediaOptions, openedMediaFolders, outLocked, outputs, popupData, providerConnections, selectAllMedia, selected, sorted, special, styles } from "../../../stores"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import { clone, keysToID, sortFilenames } from "../../helpers/array"
     import { splitPath } from "../../helpers/get"
     import { countFolderMediaItems, getExtension, getFileName, getMediaLayerType, getMediaStyle, getMediaType, isMediaExtension, removeExtension } from "../../helpers/media"
+    import { isSocketTransport } from "../../../IPC/transport"
+    import { uploadToServerWithProgress } from "../../../utils/mediaGateway"
+    import { acknowledgeFolderUploads, mediaUploads, queueMediaUploads, uploadsForFolder } from "../../../utils/mediaUpload"
+    import { trashPathsWithConfirm } from "../../../utils/trash"
     import { getFirstActiveOutput, setOutput } from "../../helpers/output"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
@@ -31,6 +35,8 @@
     import Folder from "./Folder.svelte"
     import Media from "./MediaCard.svelte"
     import MediaGrid from "./MediaGrid.svelte"
+    import MediaUploadCard from "./MediaUploadCard.svelte"
+    import TrashBrowser from "./TrashBrowser.svelte"
     import { loadFromPixabay } from "./pixabay"
     import { loadFromUnsplash } from "./unsplash"
 
@@ -55,7 +61,7 @@
     // type File = { path: string; favourite: boolean; name: string; extension: string; audio: boolean; folder?: boolean; stat?: any }
     // let files: File[] = []
 
-    let specialTabs = ["online", "inputs"]
+    let specialTabs = ["online", "inputs", "trash"]
     $: isProviderSection = contentProviders.some((p) => p.providerId === active)
     $: notFolders = ["all", ...specialTabs, ...contentProviders.map((p) => p.providerId)]
     $: isLocalFolder = !!(active && $mediaFolders[active])
@@ -81,7 +87,7 @@
         })
     }
 
-    $: folderName = active === "all" ? "category.all" : active === "favourites" ? "category.favourites" : rootPath === path ? (active !== null ? $mediaFolders[active]?.name || "" : "") : splitPath(path).name
+    $: folderName = active === "all" ? "category.all" : active === "favourites" ? "category.favourites" : active === "trash" ? "category.trash" : rootPath === path ? (active !== null ? $mediaFolders[active]?.name || "" : "") : splitPath(path).name
 
     async function loadFilesAsync() {
         if ((onlineTab !== "pixabay" && onlineTab !== "unsplash") || activeView === "folder") return
@@ -165,6 +171,9 @@
             prevActive = active
 
             requestFiles(Object.values($mediaFolders).map((a) => a.path!))
+        } else if (active === "trash") {
+            // server trash renders from its own channel (TrashBrowser)
+            prevActive = active
         } else if (path?.length) {
             if (path === prevActive) return
             prevActive = path
@@ -195,6 +204,58 @@
         })
 
         openAudioFolder()
+    }
+
+    // upload into the current server folder (remote clients can't drag in local files)
+    const remoteLibrary = isSocketTransport()
+    let uploadInput: HTMLInputElement
+    function uploadFiles(e: Event) {
+        const files = Array.from((e.target as HTMLInputElement).files || [])
+        if (uploadInput) uploadInput.value = ""
+        if (!files.length || !path) return
+
+        // placeholders render from the queue below; no refresh here — each landed
+        // upload broadcasts MEDIA_LIBRARY_CHANGED and the watcher below
+        // re-requests this view when the files land
+        queueMediaUploads(path, files, "media", uploadToServerWithProgress)
+    }
+
+    // in-flight/failed uploads targeting the currently viewed folder (path is ""
+    // outside folder views, which hides the placeholders there automatically)
+    $: folderUploads = uploadsForFolder($mediaUploads, path, "media")
+    $: activeUploadCount = folderUploads.filter((u) => u.status === "queued" || u.status === "uploading").length
+
+    // uploads prepended as first items; keyed on membership only so the array stays
+    // referentially stable across progress ticks (cards subscribe to the store by id)
+    $: uploadIdsKey = folderUploads.map((u) => u.id).join(",")
+    $: renderItems = renderItemsFor(searchedFiles, uploadIdsKey)
+    function renderItemsFor(files: FileFolder[], idsKey: string): any[] {
+        const uploads = idsKey ? idsKey.split(",").map((uploadId) => ({ isUpload: true, uploadId })) : []
+        return [...uploads, ...files]
+    }
+
+    // another client (or the expiry sweep, or an upload) changed the server library: re-request this view
+    let lastLibVersion = 0
+    $: if ($mediaLibraryVersion.n > lastLibVersion) {
+        lastLibVersion = $mediaLibraryVersion.n
+        if (active !== "trash" && active !== "online" && active !== "inputs" && !isProviderSection) {
+            // the re-request lists freshly landed uploads: drop their lingering
+            // placeholders now so they don't double with the real files
+            acknowledgeFolderUploads(path, "media")
+            prevActive = ""
+            updateContent()
+        }
+    }
+
+    async function deleteCurrentFolder() {
+        if (!path) return
+        const result = await trashPathsWithConfirm([path])
+        // the folder is gone — step back to the drawer root (broadcast refreshes the rest)
+        if (result?.trashed.length) {
+            path = rootPath
+            prevActive = ""
+            updateContent()
+        }
     }
 
     let foldersList: FileFolder[] = []
@@ -301,7 +362,7 @@
 
     let filteredFiles: FileFolder[] = []
     function filterFiles() {
-        if (active === "online" || active === "inputs" || isProviderSection) return
+        if (active === "online" || active === "inputs" || active === "trash" || isProviderSection) return
 
         let localFilteredFiles: FileFolder[] = clone(filesList)
 
@@ -506,26 +567,34 @@
             <Icon size={1.2} id="camera" white />
             <p><T id="live.cameras" /></p>
         </MaterialButton>
-        <MaterialButton style="flex: 1;" isActive={inputsTab === "screens"} on:click={() => setSubSubTab("screens")}>
-            <Icon size={1.2} id="screen" white />
-            <p><T id="live.screens" /></p>
-        </MaterialButton>
+        {#if $capabilities.screenCapture}
+            <MaterialButton style="flex: 1;" isActive={inputsTab === "screens"} on:click={() => setSubSubTab("screens")}>
+                <Icon size={1.2} id="screen" white />
+                <p><T id="live.screens" /></p>
+            </MaterialButton>
+        {/if}
         <!-- <MaterialButton style="flex: 1;" isActive={inputsTab === "windows"} on:click={() => setSubSubTab("windows")}>
             <Icon size={1.2} id="window" white />
             <p><T id="live.windows" /></p>
         </MaterialButton> -->
-        <MaterialButton style="flex: 1;" isActive={inputsTab === "ndi"} on:click={() => setSubSubTab("ndi")}>
-            <Icon size={1.1} id="ndi" white />
-            <p>NDI</p>
-        </MaterialButton>
-        <MaterialButton style="flex: 1;" isActive={inputsTab === "omt"} on:click={() => setSubSubTab("omt")}>
-            <Icon size={1.2} id="omt" white />
-            <p>OMT</p>
-        </MaterialButton>
-        <MaterialButton style="flex: 1;" isActive={inputsTab === "blackmagic"} on:click={() => setSubSubTab("blackmagic")}>
-            <Icon size={1.2} id="blackmagic" white />
-            <p>Blackmagic</p>
-        </MaterialButton>
+        {#if $capabilities.ndi}
+            <MaterialButton style="flex: 1;" isActive={inputsTab === "ndi"} on:click={() => setSubSubTab("ndi")}>
+                <Icon size={1.1} id="ndi" white />
+                <p>NDI</p>
+            </MaterialButton>
+        {/if}
+        {#if $capabilities.omt}
+            <MaterialButton style="flex: 1;" isActive={inputsTab === "omt"} on:click={() => setSubSubTab("omt")}>
+                <Icon size={1.2} id="omt" white />
+                <p>OMT</p>
+            </MaterialButton>
+        {/if}
+        {#if $capabilities.blackmagic}
+            <MaterialButton style="flex: 1;" isActive={inputsTab === "blackmagic"} on:click={() => setSubSubTab("blackmagic")}>
+                <Icon size={1.2} id="blackmagic" white />
+                <p>Blackmagic</p>
+            </MaterialButton>
+        {/if}
     </div>
 {:else if active === "online"}
     <div class="tabs">
@@ -594,12 +663,16 @@
                     <BMDStreams />
                 {/if}
             </div>
-        {:else if searchedFiles.length}
+        {:else if active === "trash"}
+            <TrashBrowser kind="media" />
+        {:else if searchedFiles.length || folderUploads.length}
             <div class="context #media" style="display: contents;">
                 {#key searchedFiles}
                     {#if $mediaOptions.mode === "grid"}
-                        <MediaGrid items={searchedFiles} columns={$mediaOptions.columns} let:item>
-                            {#if item.isFolder}
+                        <MediaGrid items={renderItems} columns={$mediaOptions.columns} let:item>
+                            {#if item.isUpload}
+                                <MediaUploadCard uploadId={item.uploadId} mode="grid" />
+                            {:else if item.isFolder}
                                 <Folder
                                     name={item.name}
                                     path={item.path}
@@ -616,8 +689,10 @@
                             {/if}
                         </MediaGrid>
                     {:else}
-                        <VirtualList items={searchedFiles} let:item={file}>
-                            {#if file.isFolder}
+                        <VirtualList items={renderItems} let:item={file}>
+                            {#if file.isUpload}
+                                <MediaUploadCard uploadId={file.uploadId} mode="list" />
+                            {:else if file.isFolder}
                                 <Folder name={file.name} path={file.path} mode={$mediaOptions.mode} on:open={(e) => (path = e.detail)} />
                             {:else}
                                 <Media credits={file.credits || {}} thumbnail={$mediaOptions.mode !== "list"} name={file.name || ""} path={file.path} loadFullImage={$mediaOptions.columns < 3} type={getMediaType(file.extension || getExtension(file.name))} shiftRange={mediaFilesOnly.map((a) => ({ ...a, type: getMediaType(getExtension(a.name)), name: removeExtension(a.name) }))} {active} />
@@ -683,7 +758,7 @@
     {/if}
 
     <MaterialZoom hidden columns={$mediaOptions.columns} defaultValue={5} on:change={(e) => mediaOptions.set({ ...$mediaOptions, columns: e.detail })} />
-{:else if active === "inputs"}
+{:else if active === "inputs" || active === "trash"}
     <!-- nothing -->
 
     <MaterialZoom hidden columns={$mediaOptions.columns} defaultValue={5} on:change={(e) => mediaOptions.set({ ...$mediaOptions, columns: e.detail })} />
@@ -724,6 +799,22 @@
                 <Icon size={1.2} id={activeView === "all" ? "media" : activeView} white={activeView === "all"} />
             </MaterialButton>
         {/if} -->
+
+        <!-- upload into the current SERVER folder (remote clients have no local file access) -->
+        {#if remoteLibrary && path && !notFolders.includes(active || "")}
+            <input bind:this={uploadInput} type="file" multiple accept="image/*,video/*,audio/*" style="display: none;" on:change={uploadFiles} />
+            <MaterialButton title="media.upload_files" on:click={() => uploadInput?.click()}>
+                <Icon id="upload" white />
+                {#if activeUploadCount}<span style="font-size: 0.8em;margin-inline-start: 6px;">{activeUploadCount}</span>{/if}
+            </MaterialButton>
+        {/if}
+
+        <!-- delete the currently viewed SERVER folder (moves to server trash) -->
+        {#if remoteLibrary && path && isLocalFolder}
+            <MaterialButton title="actions.delete_folder" on:click={deleteCurrentFolder}>
+                <Icon id="delete" white />
+            </MaterialButton>
+        {/if}
 
         <MaterialZoom columns={$mediaOptions.columns} defaultValue={5} on:change={(e) => mediaOptions.set({ ...$mediaOptions, columns: e.detail })} />
 

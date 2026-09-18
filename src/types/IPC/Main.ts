@@ -21,179 +21,35 @@ import type { Event } from "./../Calendar"
 import type { History } from "./../History"
 import type { SaveData, SaveListSyncedSettings } from "./../Save"
 
-export const MAIN = "MAIN"
+// enum + MAIN const are declared in ./channels (no imports) and re-exported here
+// so the channel enum can be consumed without pulling in the payload/Electron types below.
+export { MAIN, Main } from "./channels"
+import { Main } from "./channels"
 
-export enum Main {
-    // DEV
-    LOG = "LOG",
-    IS_DEV = "IS_DEV",
-    GET_CACHE_PATH = "GET_CACHE_PATH",
-    // APP
-    VERSION = "VERSION",
-    GET_OS = "GET_OS",
-    DEVICE_ID = "DEVICE_ID",
-    GET_DEVICE_NAME = "GET_DEVICE_NAME",
-    IP = "IP",
-    CHECK_RAM_USAGE = "CHECK_RAM_USAGE",
-    // STORES
-    SETTINGS = "SETTINGS",
-    SYNCED_SETTINGS = "SYNCED_SETTINGS",
-    STAGE = "STAGE",
-    PROJECTS = "PROJECTS",
-    OVERLAYS = "OVERLAYS",
-    TEMPLATES = "TEMPLATES",
-    EVENTS = "EVENTS",
-    MEDIA = "MEDIA",
-    THEMES = "THEMES",
-    DRIVE_API_KEY = "DRIVE_API_KEY",
-    HISTORY = "HISTORY",
-    USAGE = "USAGE",
-    CACHE = "CACHE",
-    // WINDOW
-    CLOSE = "CLOSE",
-    MAXIMIZE = "MAXIMIZE",
-    MAXIMIZED = "MAXIMIZED",
-    MINIMIZE = "MINIMIZE",
-    FULLSCREEN = "FULLSCREEN",
-    /////
-    IMPORT = "IMPORT",
-    IMPORT_FILES = "IMPORT_FILES",
-    BIBLE = "BIBLE",
-    SHOW = "SHOW",
-    SAVE = "SAVE",
-    BACKUPS = "BACKUPS",
-    DELETE_BACKUP = "DELETE_BACKUP",
-    ///////////////////
-    SPELLCHECK = "SPELLCHECK",
-    ////
-    SHOWS = "SHOWS",
-    AUTO_UPDATE = "AUTO_UPDATE",
-    URL = "URL",
-    LANGUAGE = "LANGUAGE",
-    GET_PATHS = "GET_PATHS",
-    DATA_PATH = "DATA_PATH",
-    UPDATE_DATA_PATH = "UPDATE_DATA_PATH",
-    LOG_ERROR = "LOG_ERROR",
-    OPEN_LOG = "OPEN_LOG",
-    OPEN_CACHE = "OPEN_CACHE",
-    OPEN_APPDATA = "OPEN_APPDATA",
-    OPEN_FOLDER_PATH = "OPEN_FOLDER_PATH",
-    OPEN_NOW_PLAYING = "OPEN_NOW_PLAYING",
-    GET_STORE_VALUE = "GET_STORE_VALUE",
-    SET_STORE_VALUE = "SET_STORE_VALUE",
-    DELETE_SHOWS = "DELETE_SHOWS",
-    DELETE_SHOWS_NI = "DELETE_SHOWS_NI",
-    REFRESH_SHOWS = "REFRESH_SHOWS",
-    GET_EMPTY_SHOWS = "GET_EMPTY_SHOWS",
-    FULL_SHOWS_LIST = "FULL_SHOWS_LIST",
-    GET_SCREENS = "GET_SCREENS",
-    GET_WINDOWS = "GET_WINDOWS",
-    GET_DISPLAYS = "GET_DISPLAYS",
-    GET_GRAPHICS_DEVICES = "GET_GRAPHICS_DEVICES",
-    OUTPUT = "OUTPUT",
-    DOES_MEDIA_EXIST = "DOES_MEDIA_EXIST",
-    GET_THUMBNAIL = "GET_THUMBNAIL",
-    SAVE_IMAGE = "SAVE_IMAGE",
-    PDF_TO_IMAGE = "PDF_TO_IMAGE",
-    READ_EXIF = "READ_EXIF",
-    MEDIA_CODEC = "MEDIA_CODEC",
-    MEDIA_TRACKS = "MEDIA_TRACKS",
-    DOWNLOAD_LESSONS_MEDIA = "DOWNLOAD_LESSONS_MEDIA",
-    MEDIA_DOWNLOAD = "MEDIA_DOWNLOAD",
-    MEDIA_IS_DOWNLOADED = "MEDIA_IS_DOWNLOADED",
-    NOW_PLAYING = "NOW_PLAYING",
-    NOW_PLAYING_UNSET = "NOW_PLAYING_UNSET",
-    // MEDIA_BASE64 = "MEDIA_BASE64",
-    READ_AUDIO_METADATA = "READ_AUDIO_METADATA",
-    CAPTURE_SLIDE = "CAPTURE_SLIDE",
-    ACCESS_CAMERA_PERMISSION = "ACCESS_CAMERA_PERMISSION",
-    ACCESS_MICROPHONE_PERMISSION = "ACCESS_MICROPHONE_PERMISSION",
-    ACCESS_SCREEN_PERMISSION = "ACCESS_SCREEN_PERMISSION",
-    LIBREOFFICE_CONVERT = "LIBREOFFICE_CONVERT",
-    SLIDESHOW_GET_APPS = "SLIDESHOW_GET_APPS",
-    START_SLIDESHOW = "START_SLIDESHOW",
-    PRESENTATION_CONTROL = "PRESENTATION_CONTROL",
-    START = "START",
-    STOP = "STOP",
-    SERVER_DATA = "SERVER_DATA",
-    WEBSOCKET_START = "WEBSOCKET_START",
-    WEBSOCKET_STOP = "WEBSOCKET_STOP",
-    API_TRIGGER = "API_TRIGGER",
-    EMIT_OSC = "EMIT_OSC",
-    GET_MIDI_OUTPUTS = "GET_MIDI_OUTPUTS",
-    GET_MIDI_INPUTS = "GET_MIDI_INPUTS",
-    SEND_MIDI = "SEND_MIDI",
-    RECEIVE_MIDI = "RECEIVE_MIDI",
-    CLOSE_MIDI = "CLOSE_MIDI",
-    GET_LYRICS = "GET_LYRICS",
-    SEARCH_LYRICS = "SEARCH_LYRICS",
-    RECORDER = "RECORDER",
-    RESTORE = "RESTORE",
-    SYSTEM_OPEN = "SYSTEM_OPEN",
-    LOCATE_MEDIA_FILE = "LOCATE_MEDIA_FILE",
-    GET_MEDIA_FOLDER_PATH = "GET_MEDIA_FOLDER_PATH",
-    SET_MEDIA_FOLDER_PATH = "SET_MEDIA_FOLDER_PATH",
-    GET_SIMILAR = "GET_SIMILAR",
-    BUNDLE_MEDIA_FILES = "BUNDLE_MEDIA_FILES",
-    MEDIA_FOLDER_COPY = "MEDIA_FOLDER_COPY",
-    READ_BIBLES_FOLDER = "READ_BIBLES_FOLDER",
-    FILE_INFO = "FILE_INFO",
-    READ_FOLDER = "READ_FOLDER",
-    READ_FILE = "READ_FILE",
-    OPEN_FOLDER = "OPEN_FOLDER",
-    OPEN_FILE = "OPEN_FILE",
-    // SYNC
-    CAN_SYNC = "CAN_SYNC",
-    GET_TEAMS = "GET_TEAMS",
-    CLOUD_DATA = "CLOUD_DATA",
-    CLOUD_CHANGED = "CLOUD_CHANGED",
-    CLOUD_SYNC = "CLOUD_SYNC",
-    RESTORE_CLOUD_BACKUP = "RESTORE_CLOUD_BACKUP",
-    GET_CONVERSATION_ID = "GET_CONVERSATION_ID",
-    SEND_SOCKET_MESSAGE = "SEND_SOCKET_MESSAGE",
-    // Provider-based routing
-    PROVIDER_LOAD_SERVICES = "PROVIDER_LOAD_SERVICES",
-    PROVIDER_CONNECTIONS = "PROVIDER_CONNECTIONS",
-    PROVIDER_DISCONNECT = "PROVIDER_DISCONNECT",
-    PROVIDER_STARTUP_LOAD = "PROVIDER_STARTUP_LOAD",
-    PROVIDER_FETCH_FOLDERS = "PROVIDER_FETCH_FOLDERS",
-    PCO_LIVE_GET = "PCO_LIVE_GET",
-    PCO_PUSHER_AUTH = "PCO_PUSHER_AUTH",
-    PCO_FETCH_SERVICE_TREE = "PCO_FETCH_SERVICE_TREE",
-    PCO_LOAD_PLAN = "PCO_LOAD_PLAN",
-    ONSTAGE_LOAD_SERVICE = "ONSTAGE_LOAD_SERVICE",
-    ONSTAGE_GET_TEAMS = "ONSTAGE_GET_TEAMS",
-    ONSTAGE_SWITCH_TEAM = "ONSTAGE_SWITCH_TEAM",
-    // Content Library
-    GET_CONTENT_PROVIDERS = "GET_CONTENT_PROVIDERS",
-    GET_CONTENT_LIBRARY = "GET_CONTENT_LIBRARY",
-    GET_PROVIDER_CONTENT = "GET_PROVIDER_CONTENT",
-    CHECK_MEDIA_LICENSE = "CHECK_MEDIA_LICENSE",
-    // Timecode
-    TIMECODE_START = "TIMECODE_START",
-    TIMECODE_STOP = "TIMECODE_STOP",
-    TIMECODE_VALUE = "TIMECODE_VALUE",
-    TIMECODE_AUDIO_DATA = "TIMECODE_AUDIO_DATA",
-    TIMECODE_STATUS = "TIMECODE_STATUS",
-    // Spotify
-    SPOTIFY_GET_STATE = "SPOTIFY_GET_STATE",
-    SPOTIFY_COMMAND = "SPOTIFY_COMMAND",
-    // FFmpeg Download
-    FFMPEG_CHECK = "FFMPEG_CHECK",
-    FFMPEG_DOWNLOAD = "FFMPEG_DOWNLOAD",
-    // Streaming encoder
-    ENCODER_DETECT = "ENCODER_DETECT",
-    SET_RTMP_ENCODER = "SET_RTMP_ENCODER",
-    // AI
-    AI_GET_MODELS = "AI_GET_MODELS",
-    AI_GET_BIN = "AI_GET_BIN",
-    AI_LISTEN_START = "AI_LISTEN_START",
-    AI_LISTEN_STOP = "AI_LISTEN_STOP",
-    AI_AUDIO_DATA = "AI_AUDIO_DATA",
-    AI_GET_STATUS = "AI_GET_STATUS",
-    AI_SETUP = "AI_SETUP",
-    AI_SET_KEY = "AI_SET_KEY",
-    AI_LLM_COMPLETE = "AI_LLM_COMPLETE"
+// Trash payloads (server-side trash for remote drawer deletes; see src/server/headless/data/trash.ts)
+export interface TrashEntryData {
+    id: string
+    name: string
+    /** sandbox-relative original path */
+    originalPath: string
+    isFolder: boolean
+    /** epoch ms of deletion (server clock) */
+    deletedAt: number
+    size: number
+    deletedBy?: string
+}
+export interface TrashFailureData {
+    path: string
+    reason: string
+}
+export interface MediaUsageRef {
+    kind: "show" | "project" | "overlay" | "template" | "playlist"
+    id: string
+    name: string
+    /** show refs only: projects containing the show */
+    projects?: { id: string; name: string }[]
+    /** media-map-only (orphan) reference: not reachable from any slide/layout */
+    weak?: boolean
 }
 
 export interface MainSendPayloads {
@@ -207,6 +63,7 @@ export interface MainSendPayloads {
     [Main.SAVE]: SaveData
     ////////////
     [Main.DELETE_BACKUP]: { path: string }
+    [Main.RESTORE_UPLOAD]: ArrayBuffer | Uint8Array
     [Main.SPELLCHECK]: { addToDictionary?: string; fixSpelling?: string }
     [Main.URL]: string
     [Main.LANGUAGE]: { lang: string; strings: Dictionary }
@@ -260,6 +117,10 @@ export interface MainSendPayloads {
     [Main.FILE_INFO]: string
     [Main.READ_FOLDER]: { path: string | string[]; depth?: number; generateThumbnails?: boolean; captureFolderContent?: boolean }
     [Main.READ_FILE]: { path: string }
+    [Main.CREATE_FOLDER]: { path: string; name: string }
+    [Main.TRASH_FILES]: { paths: string[]; deletedBy?: string }
+    [Main.TRASH_RESTORE]: { ids: string[] }
+    [Main.TRASH_DELETE]: { ids: string[] }
     [Main.OPEN_FOLDER]: { channel: string; title?: string; path?: string }
     [Main.OPEN_FILE]: { id: string; channel: string; title?: string; filter: any; multiple: boolean; read?: boolean }
     // SYNC
@@ -301,6 +162,11 @@ export interface MainSendPayloads {
     // Streaming encoder
     [Main.ENCODER_DETECT]: { force?: boolean } | undefined
     [Main.SET_RTMP_ENCODER]: { outputId: string; encoder: string }
+    // Remote-media cache (LOCAL only)
+    [Main.MEDIA_CACHE_GET]: { path: string }
+    [Main.MEDIA_CACHE_PREFETCH]: { paths: string[]; serverUrl: string; token?: string; maxBytes?: number }
+    [Main.MEDIA_CACHE_STATUS]: undefined
+    [Main.MEDIA_CACHE_CLEAR]: undefined
     // AI
     [Main.AI_GET_MODELS]: { providerId: AIProviderId }
     [Main.AI_LISTEN_START]: { engine: string; engineOptions: SttEngineOptions }
@@ -309,6 +175,7 @@ export interface MainSendPayloads {
     [Main.AI_SETUP]: AiSetupOptions
     [Main.AI_SET_KEY]: { providerId: AIProviderId; key: string }
     [Main.AI_LLM_COMPLETE]: { providerId: AIProviderId; model: string; options: { systemPrompt?: string; prompt: string; jsonSchema?: any; temperature?: number; maxTokens?: number } }
+    [Main.BOOTSTRAP_PUBLISH]: { serverUrl: string; token?: string; destFolder?: string; audioDestFolder?: string; includeMedia?: boolean; includeBibles?: boolean; replace?: boolean }
 }
 
 export interface MainReturnPayloads {
@@ -325,6 +192,8 @@ export interface MainReturnPayloads {
     ///
     // [Main.SAVE]: { closeWhenFinished: boolean; customTriggers: any } | Promise<void>
     [Main.BACKUPS]: { path: string; name: string; date: number; size: number }[]
+    [Main.RESTORE_UPLOAD]: { finished: boolean; error?: string }
+    [Main.BACKUP_DOWNLOAD]: Uint8Array | ArrayBuffer
     [Main.SHOWS]: TrimmedShows
     // STORES
     [Main.SYNCED_SETTINGS]: { [key in SaveListSyncedSettings]: any }
@@ -380,6 +249,14 @@ export interface MainReturnPayloads {
     [Main.READ_BIBLES_FOLDER]: { path: string; name: string }[]
     [Main.FILE_INFO]: { path: string; stat: Stats; extension: string; folder: boolean } | null
     [Main.READ_FOLDER]: Promise<{ [key: string]: FileFolder }>
+    [Main.CREATE_FOLDER]: string
+    [Main.TRASH_FILES]: { trashed: TrashEntryData[]; failed: TrashFailureData[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_RESTORE]: { restored: { id: string; path: string; originalPath: string; renamed: boolean }[]; failed: TrashFailureData[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_DELETE]: { deleted: string[]; failed: TrashFailureData[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_EMPTY]: { deleted: string[]; paths: string[]; manifestError?: string }
+    [Main.TRASH_LIST]: { entries: TrashEntryData[]; totalSize: number; swept: string[]; v?: number }
+    [Main.MEDIA_USAGE]: { usage: Record<string, MediaUsageRef[]>; missing: TrashFailureData[]; summary: { files: number; usedFiles: number } }
+    [Main.MEDIA_LIBRARY_CHANGED]: { kind: "uploaded" | "trashed" | "restored" | "deleted" | "emptied" | "expired"; ids?: string[]; paths?: string[]; v?: number }
     [Main.READ_FILE]: { content: string }
     // SYNC
     [Main.CAN_SYNC]: Promise<boolean>
@@ -415,6 +292,11 @@ export interface MainReturnPayloads {
     [Main.FFMPEG_DOWNLOAD]: Promise<{ success: boolean; error?: string }>
     // Streaming encoder
     [Main.ENCODER_DETECT]: Promise<EncoderDetection>
+    // Remote-media cache (LOCAL only)
+    [Main.MEDIA_CACHE_GET]: { path: string; localPath: string | null; cached: boolean } | null
+    [Main.MEDIA_CACHE_PREFETCH]: Promise<{ requested: number; downloaded: number; skipped: number; failed: { path: string; reason: string }[]; bytes: number; evicted: string[] }>
+    [Main.MEDIA_CACHE_STATUS]: { files: number; bytes: number; dir: string }
+    [Main.MEDIA_CACHE_CLEAR]: { clearedFiles: number; freedBytes: number }
     // AI
     [Main.AI_GET_BIN]: Promise<{ path: string; name: string; size: number }[]>
     [Main.AI_LISTEN_START]: Promise<{ started: boolean; error?: string }>
@@ -422,6 +304,7 @@ export interface MainReturnPayloads {
     [Main.AI_SETUP]: Promise<boolean>
     [Main.AI_SET_KEY]: Promise<boolean>
     [Main.AI_LLM_COMPLETE]: Promise<{ text: string; error?: string; code?: string; retryAfter?: number }>
+    [Main.BOOTSTRAP_PUBLISH]: Promise<{ success: boolean; error?: string; status?: { shows: number; bibles: number; empty: boolean }; shows?: number; bibles?: number; replaced?: boolean; media?: { uploaded: number; skipped: number; failed: { path: string; reason: string }[]; bytes: number } }>
 }
 
 ///////////

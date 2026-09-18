@@ -4,6 +4,9 @@ import { app, desktopCapturer, screen, shell, systemPreferences } from "electron
 import os from "os"
 import path from "path"
 import { getMainWindow, isProd, mainWindow, maximizeMain, setGlobalMenu } from ".."
+import { createPortableResponses } from "../../shared/ipc/createPortableResponses"
+import { ELECTRON_CAPABILITIES } from "../../shared/platform/capabilities"
+import type { Platform } from "../../shared/platform/Platform"
 import type { MainResponses } from "../../types/IPC/Main"
 import { Main } from "../../types/IPC/Main"
 import { ToMain } from "../../types/IPC/ToMain"
@@ -20,8 +23,11 @@ import { canSync, getSyncTeams, hasDataChanged, hasTeamData, markAsNewSync, rest
 import { ChurchAppsChat } from "../contentProviders/churchApps/ChurchAppsChat"
 import { ContentProviderRegistry } from "../contentProviders/ContentProviderRegistry"
 import { deleteBackup, getBackups, restoreFiles } from "../data/backup"
+import { publishBootstrap } from "../data/bootstrap"
 import { getLocalIPs } from "../data/bonjour"
 import { checkIfMediaDownloaded, downloadLessonsMedia, downloadMedia } from "../data/downloadMedia"
+import { clearMediaCache, getCachedMedia, getMediaCacheStatus, prefetchCachedMedia } from "../data/mediaCache"
+import { getMediaCodec, getMediaTracks } from "../data/mediaProbe"
 import { importShow } from "../data/import"
 import { save } from "../data/save"
 import { _store, appDataPath, config, createStores, getStore, getStoreValue, setStoreValue } from "../data/store"
@@ -35,7 +41,7 @@ import { downloadFfmpeg, resolveFfmpegPath } from "../streaming/ffmpegManager"
 import { processAudioData, timecodeStart, timecodeStop, updateTimecodeValue } from "../timecode/timecode"
 import { apiReturnData, emitOSC, startWebSocketAndRest, stopApiListener } from "../utils/api"
 import { closeMain } from "../utils/close"
-import { addToMediaFolder, bundleMediaFiles, createFolder, getDataFolderPath, getDataFolderRoot, getFileInfo, getMediaCodec, getMediaSyncFolderPath, getMediaTracks, getPaths, getSimularPaths, loadFile, loadShowsAsync, locateMediaFile, openInSystem, readExifData, readFile, readFolder, readFolderContent, selectFiles, selectFilesDialog, selectFolder, setMediaSyncFolderPath, writeFile } from "../utils/files"
+import { addToMediaFolder, bundleMediaFiles, createFolder, getDataFolderPath, getDataFolderRoot, getFileInfo, getMediaSyncFolderPath, getPaths, getSimularPaths, loadFile, loadShowsAsync, locateMediaFile, openInSystem, readExifData, readFile, readFolder, readFolderContent, selectFiles, selectFilesDialog, selectFolder, setMediaSyncFolderPath, writeFile } from "../utils/files"
 import { listGraphicsDevices } from "../utils/gpu"
 import { getMachineId } from "../utils/helpers"
 import { LyricSearch } from "../utils/LyricSearch"
@@ -46,33 +52,41 @@ import { executeSpotifyCommand, getSpotifyState } from "../utils/spotify"
 import checkForUpdates from "../utils/updater"
 import { sendToMain } from "./main"
 
+const electronPlatform: Platform = {
+    id: "electron",
+    capabilities: ELECTRON_CAPABILITIES,
+    data: {
+        getStore: (id) => getStore(id as any),
+        setStore: (id, value) => (_store as any)[id]?.set(value),
+        getStoreValue,
+        setStoreValue,
+        save,
+        loadShow,
+        loadShows: () => loadShowsAsync(),
+        loadAllShows: getAllShows,
+        loadScripture,
+        readBiblesFolder,
+        getDataFolderRoot,
+        getDataFolderPath,
+        getPaths,
+        readFile,
+        readFolder,
+        readFolderContent,
+        createFolder: ({ path: folderPath, name }) => createFolder(path.join(folderPath, name))
+    },
+    isDevelopment: () => !isProd,
+    getCachePath: getThumbnailFolderPath,
+    getVersion,
+    getOS,
+    getDeviceId: getMachineId,
+    getDeviceName,
+    getLocalIPs,
+    checkRamUsage
+}
+
 // no need to await Promise returns here
-export const mainResponses: MainResponses = {
-    // DEV
-    [Main.LOG]: (data) => console.info(data),
-    [Main.IS_DEV]: () => !isProd,
-    [Main.GET_CACHE_PATH]: () => getThumbnailFolderPath(),
-    // APP
-    [Main.VERSION]: () => getVersion(),
-    [Main.GET_OS]: () => getOS(),
-    [Main.DEVICE_ID]: () => getMachineId(),
-    [Main.GET_DEVICE_NAME]: () => getDeviceName(),
-    [Main.IP]: () => getLocalIPs(),
-    [Main.CHECK_RAM_USAGE]: () => checkRamUsage(),
-    // STORES
-    [Main.SETTINGS]: () => getStore("SETTINGS"),
-    [Main.SYNCED_SETTINGS]: () => getStore("SYNCED_SETTINGS"),
-    [Main.STAGE]: () => getStore("STAGE"),
-    [Main.PROJECTS]: () => getStore("PROJECTS"),
-    [Main.OVERLAYS]: () => getStore("OVERLAYS"),
-    [Main.TEMPLATES]: () => getStore("TEMPLATES"),
-    [Main.EVENTS]: () => getStore("EVENTS"),
-    [Main.MEDIA]: () => getStore("MEDIA"),
-    [Main.THEMES]: () => getStore("THEMES"),
-    [Main.DRIVE_API_KEY]: () => getStore("DRIVE_API_KEY"),
-    [Main.HISTORY]: () => getStore("HISTORY"),
-    [Main.USAGE]: () => getStore("USAGE"),
-    [Main.CACHE]: () => getStore("CACHE"),
+export const mainResponses = {
+    ...createPortableResponses(electronPlatform),
     // WINDOW
     [Main.CLOSE]: () => closeMain(),
     [Main.MAXIMIZE]: () => maximizeMain(),
@@ -81,20 +95,29 @@ export const mainResponses: MainResponses = {
     [Main.FULLSCREEN]: () => getMainWindow()?.setFullScreen(!getMainWindow()?.isFullScreen()),
     [Main.SPELLCHECK]: (a) => correctSpelling(a),
     /// //////////////////////
-    [Main.SAVE]: (a) => save(a),
     [Main.BACKUPS]: () => getBackups(),
     [Main.DELETE_BACKUP]: (data) => deleteBackup(data),
+    // headless-server-only channels (web/hybrid clients upload/download a zip over the
+    // socket transport instead - see src/shared/ipc/createPortableResponses.ts). The
+    // frontend only sends these when connected to a remote server, which routes them
+    // there before they'd ever reach the Electron main process; these exist only to
+    // satisfy MainResponses' exhaustive channel mapping.
+    [Main.RESTORE_UPLOAD]: () => ({ finished: false, error: "not supported on desktop" }),
+    [Main.BACKUP_DOWNLOAD]: () => new Uint8Array(),
+    // server trash is remote-only (routed to the server before reaching Electron main)
+    [Main.TRASH_FILES]: () => ({ trashed: [], failed: [], paths: [] }),
+    [Main.TRASH_RESTORE]: () => ({ restored: [], failed: [], paths: [] }),
+    [Main.TRASH_DELETE]: () => ({ deleted: [], failed: [], paths: [] }),
+    [Main.TRASH_EMPTY]: () => ({ deleted: [], paths: [] }),
+    [Main.TRASH_LIST]: () => ({ entries: [], totalSize: 0, swept: [] }),
+    [Main.MEDIA_USAGE]: () => ({ usage: {}, missing: [], summary: { files: 0, usedFiles: 0 } }),
+    [Main.MEDIA_LIBRARY_CHANGED]: () => ({ kind: "expired" as const, ids: [] }),
     [Main.IMPORT]: (data) => startImport(data),
     [Main.IMPORT_FILES]: (data) => importFiles(data),
-    [Main.BIBLE]: (data) => loadScripture(data),
-    [Main.SHOW]: (data) => loadShow(data),
     // MAIN
-    [Main.SHOWS]: (() => loadShowsAsync()) as any,
     [Main.AUTO_UPDATE]: () => checkForUpdates(),
     [Main.URL]: (data) => openURL(data),
     [Main.LANGUAGE]: (data) => setGlobalMenu(data.strings),
-    [Main.GET_PATHS]: () => getPaths(),
-    [Main.DATA_PATH]: () => getDataFolderRoot(),
     [Main.UPDATE_DATA_PATH]: (data) => {
         config.set("dataPath", data.newPath)
         createStores(data.oldPath)
@@ -105,14 +128,11 @@ export const mainResponses: MainResponses = {
     [Main.OPEN_APPDATA]: () => openInSystem(appDataPath, true),
     [Main.OPEN_FOLDER_PATH]: (folderPath) => openInSystem(folderPath, true),
     [Main.OPEN_NOW_PLAYING]: () => openNowPlaying(),
-    [Main.GET_STORE_VALUE]: (data) => getStoreValue(data),
-    [Main.SET_STORE_VALUE]: (data) => setStoreValue(data),
     // SHOWS
     [Main.DELETE_SHOWS]: (data) => deleteShows(data),
     [Main.DELETE_SHOWS_NI]: (data) => deleteShowsNotIndexed(data),
     [Main.REFRESH_SHOWS]: () => refreshAllShows(),
     [Main.GET_EMPTY_SHOWS]: (data) => getEmptyShows(data),
-    [Main.FULL_SHOWS_LIST]: () => getAllShows(),
     // OUTPUT
     [Main.GET_SCREENS]: () => getScreens(),
     [Main.GET_WINDOWS]: () => getScreens("window"),
@@ -130,6 +150,11 @@ export const mainResponses: MainResponses = {
     [Main.DOWNLOAD_LESSONS_MEDIA]: (data) => downloadLessonsMedia(data),
     [Main.MEDIA_DOWNLOAD]: (data) => downloadMedia(data),
     [Main.MEDIA_IS_DOWNLOADED]: async (data) => await checkIfMediaDownloaded(data),
+    // Remote-media cache (LOCAL only — never routed to the server, see routing.ts)
+    [Main.MEDIA_CACHE_GET]: (data) => getCachedMedia(data),
+    [Main.MEDIA_CACHE_PREFETCH]: (data) => prefetchCachedMedia(data),
+    [Main.MEDIA_CACHE_STATUS]: () => getMediaCacheStatus(),
+    [Main.MEDIA_CACHE_CLEAR]: () => clearMediaCache(),
     [Main.NOW_PLAYING]: (data) => setPlayingState(data),
     [Main.NOW_PLAYING_UNSET]: () => unsetPlayingAudio(),
     // [Main.MEDIA_BASE64]: (data) => storeMedia(data),
@@ -173,10 +198,7 @@ export const mainResponses: MainResponses = {
     [Main.GET_SIMILAR]: (data) => getSimularPaths(data),
     [Main.BUNDLE_MEDIA_FILES]: (data) => bundleMediaFiles(data),
     [Main.MEDIA_FOLDER_COPY]: (data) => addToMediaFolder(data.paths),
-    [Main.READ_BIBLES_FOLDER]: () => readBiblesFolder(),
     [Main.FILE_INFO]: (data) => getFileInfo(data),
-    [Main.READ_FOLDER]: (data) => readFolderContent(data),
-    [Main.READ_FILE]: (data) => ({ content: readFile(data.path) }),
     [Main.OPEN_FOLDER]: (data) => selectFolder(data),
     [Main.OPEN_FILE]: (data) => selectFiles(data),
     // SYNC
@@ -288,8 +310,11 @@ export const mainResponses: MainResponses = {
     [Main.AI_GET_STATUS]: (data) => aiGetModelStatus(data),
     [Main.AI_SETUP]: (data) => aiHandleLocalSetup(data),
     [Main.AI_SET_KEY]: (data) => setAiKey(data),
-    [Main.AI_LLM_COMPLETE]: (data) => completeLLM(data)
-}
+    [Main.AI_LLM_COMPLETE]: (data) => completeLLM(data),
+    // Bootstrap publish (LOCAL only — pushes this machine's library to a headless
+    // server over HTTP; progress streams back via ToMain.BOOTSTRAP_PROGRESS)
+    [Main.BOOTSTRAP_PUBLISH]: (data) => publishBootstrap(data)
+} satisfies MainResponses
 
 /// ///////
 

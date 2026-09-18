@@ -1,19 +1,25 @@
 <script lang="ts">
-    import { onDestroy } from "svelte"
+    import { onDestroy, onMount } from "svelte"
     import { uid } from "uid"
     import type { ContentProviderId } from "../../../../electron/contentProviders/base/types"
     import { Main } from "../../../../types/IPC/Main"
     import { ToMain } from "../../../../types/IPC/ToMain"
     import { destroyMain, receiveToMain, requestMain, sendMain } from "../../../IPC/main"
-    import { drawerTabsData, labelsDisabled, media, mediaFolders, providerConnections, special } from "../../../stores"
+    import { activePopup, drawerTabsData, labelsDisabled, media, mediaFolders, mediaLibraryVersion, popupData, providerConnections, special } from "../../../stores"
+    import { isSocketTransport } from "../../../IPC/transport"
     import { getAccess } from "../../../utils/profile"
     import { keysToID, sortObject } from "../../helpers/array"
+    import { listTrashEntries } from "../../../utils/trash"
     import { addDrawerFolder } from "../../helpers/dropActions"
     import Icon from "../../helpers/Icon.svelte"
-    import { countFolderMediaItems } from "../../helpers/media"
+    import { countFolderMediaItems, getExtension, getMediaType } from "../../helpers/media"
     import T from "../../helpers/T.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import NavigationSections from "./NavigationSections.svelte"
+
+    // when connected to a server, the media library lives there — browse/create SERVER
+    // folders (so media syncs) instead of a local OS folder dialog
+    const remoteLibrary = isSocketTransport()
 
     const profile = getAccess("media")
     $: readOnly = profile.global === "read"
@@ -60,6 +66,16 @@
 
     $: curriculumProviders = contentProviders.filter((a) => (a.providerId !== "churchApps" || $special.churchAppsCloudOnly !== true) && a.providerId !== "canva")
 
+    // server trash badge (remote only): media files + folders (folders may hold mixed content)
+    let trashCount = 0
+    async function updateTrashCount() {
+        if (!remoteLibrary) return
+        const { entries } = await listTrashEntries()
+        trashCount = entries.filter((e) => e.isFolder || getMediaType(getExtension(e.name)) !== "audio").length
+    }
+    onMount(() => void updateTrashCount())
+    $: if ($mediaLibraryVersion.n) void updateTrashCount()
+
     let sections: any[] = []
     $: sections = [
         [
@@ -68,7 +84,8 @@
         ],
         ...(curriculumProviders.length ? [[{ id: "TITLE", label: "Curriculum" }, ...curriculumProviders.map((a) => ({ id: a.providerId, label: a.displayName, icon: "web" }))]] : []),
         [{ id: "inputs", label: "emitters.inputs", icon: "input" }, "SEPARATOR", { id: "online", label: "media.online", icon: "web" }].filter(Boolean),
-        [{ id: "TITLE", label: "media.folders" }, ...convertToButton(foldersList, folderLengths)]
+        [{ id: "TITLE", label: "media.folders" }, ...convertToButton(foldersList, folderLengths)],
+        ...(remoteLibrary ? [[{ id: "trash", label: "category.trash", icon: "delete", count: trashCount }]] : [])
     ]
 
     function convertToButton(categories: any[], lengths: { [key: string]: number }) {
@@ -82,6 +99,11 @@
     const PICK_ID = uid()
     function addFolder() {
         sendMain(Main.OPEN_FOLDER, { channel: PICK_ID })
+    }
+    // remote clients browse the server's folders instead of a native OS dialog
+    function addServerFolder() {
+        popupData.set({ type: "media" })
+        activePopup.set("remote_folder")
     }
     let listenerId = receiveToMain(ToMain.OPEN_FOLDER2, (data) => {
         if (data.channel !== PICK_ID || !data.path) return
@@ -102,16 +124,30 @@
 <NavigationSections {sections} active={activeSubTab} on:rename={updateName}>
     <div slot="section_2" style="{!curriculumProviders.length ? 'padding: 8px;' : ''}{foldersList.length && !curriculumProviders.length ? 'padding-top: 12px;' : ''}">
         {#if !curriculumProviders.length}
+            {#if !remoteLibrary}
+                <MaterialButton style="width: 100%;" title="new.system_folder" variant="outlined" disabled={readOnly} on:click={addFolder} small>
+                    <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
+                    {#if !$labelsDisabled}<T id="new.system_folder" />{/if}
+                </MaterialButton>
+            {:else}
+                <MaterialButton style="width: 100%;" title="new.folder" variant="outlined" disabled={readOnly} on:click={addServerFolder} small>
+                    <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
+                    {#if !$labelsDisabled}<T id="new.folder" />{/if}
+                </MaterialButton>
+            {/if}
+        {/if}
+    </div>
+    <div slot="section_3" style="padding: 8px;{foldersList.length ? 'padding-top: 12px;' : ''}">
+        {#if !remoteLibrary}
             <MaterialButton style="width: 100%;" title="new.system_folder" variant="outlined" disabled={readOnly} on:click={addFolder} small>
                 <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
                 {#if !$labelsDisabled}<T id="new.system_folder" />{/if}
             </MaterialButton>
+        {:else}
+            <MaterialButton style="width: 100%;" title="new.folder" variant="outlined" disabled={readOnly} on:click={addServerFolder} small>
+                <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
+                {#if !$labelsDisabled}<T id="new.folder" />{/if}
+            </MaterialButton>
         {/if}
-    </div>
-    <div slot="section_3" style="padding: 8px;{foldersList.length ? 'padding-top: 12px;' : ''}">
-        <MaterialButton style="width: 100%;" title="new.system_folder" variant="outlined" disabled={readOnly} on:click={addFolder} small>
-            <Icon id="add" size={$labelsDisabled ? 0.9 : 1} white={$labelsDisabled} />
-            {#if !$labelsDisabled}<T id="new.system_folder" />{/if}
-        </MaterialButton>
     </div>
 </NavigationSections>

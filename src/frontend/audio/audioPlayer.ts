@@ -8,6 +8,8 @@ import { checkNextAfterMedia } from "../components/helpers/showActions"
 import { requestMain, sendMain } from "../IPC/main"
 import { activePlaylist, dictionary, media, outLocked, playingAudio, playingAudioPaths, special } from "../stores"
 import { addToMediaFolder } from "../utils/cloudSync"
+import { isRemoteMedia } from "../utils/mediaGateway"
+import { resolveProbePath } from "../utils/remoteMediaCache"
 import { AudioAnalyser } from "./audioAnalyser"
 import { clearAudio, clearing, fadeInAudio, fadeOutAudio } from "./audioFading"
 import { AudioMultichannel } from "./audioMultichannel"
@@ -126,7 +128,20 @@ export class AudioPlayer {
             return true
         }
 
-        const newVolume = AudioPlayer.getVolume(path) * (options.volume || 1)
+        let replayGainMultiplier = 1
+        try {
+            // Remote library files live on the server: read ReplayGain from the
+            // persistent local cache copy when available, otherwise skip (multiplier 1).
+            const probePath = isRemoteMedia() ? await resolveProbePath(path).catch(() => null) : path
+            const audioMetadata = probePath ? await requestMain(Main.READ_AUDIO_METADATA, { filePath: probePath }) : null
+            if (audioMetadata?.replayGainMultiplier) {
+                replayGainMultiplier = audioMetadata.replayGainMultiplier
+            }
+        } catch (e) {
+            console.error("Failed to read ReplayGain metadata", e)
+        }
+
+        const newVolume = AudioPlayer.getVolume(path) * (options.volume || 1) * replayGainMultiplier
         audio.volume = Math.min(1, Math.max(0, newVolume))
 
         options.startAt = AudioPlayer.getStartTime(path, options.startAt)

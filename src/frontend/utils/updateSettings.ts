@@ -8,6 +8,7 @@ import type { Metadata, Themes } from "../../types/Settings"
 import { migrateAudioEffects } from "../audio/effects/audioEffectsHelpers"
 import { initAudioRouting } from "../audio/routing/audioRoutingInit"
 import { clone, keysToID } from "../components/helpers/array"
+import { isSocketTransport } from "../IPC/transport"
 import { checkFFmpeg, checkWindowCapture, setOutput, toggleOutputs } from "../components/helpers/output"
 import { migrateOutputsRtmp } from "../components/helpers/rtmpDestinations"
 import { defaultThemes } from "../components/settings/tabs/defaultThemes"
@@ -132,6 +133,15 @@ export function updateSettings(data: any) {
     // pre v1.6.5 (audioEffects was not in stack format)
     if (data.audioEffects) {
         data.audioEffects = migrateAudioEffects(data.audioEffects)
+    }
+
+    // When connected to a server the media/audio library lives there, so ignore this
+    // machine's local folder lists — their paths don't exist on the server and would
+    // break shows synced from it. The server's lists arrive via SYNCED_SETTINGS instead.
+    if (isSocketTransport()) {
+        data = { ...data }
+        delete data.mediaFolders
+        delete data.audioFolders
     }
 
     Object.entries(data).forEach(([key, value]: any) => {
@@ -395,7 +405,7 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
     },
     special: (v: any) => {
         if (v.capitalize_words === undefined) v.capitalize_words = "Jesus, Lord" // God
-        if (v.autoUpdates) sendMain(Main.AUTO_UPDATE)
+        if (v.autoUpdates && !isSocketTransport()) sendMain(Main.AUTO_UPDATE)
         // don't backup when just initialized (or reset)
         if (!v.autoBackupPrevious) v.autoBackupPrevious = Date.now()
         if (v.startupProjectsList) {

@@ -14,7 +14,7 @@ import { _getVariableValue, getDynamicValue } from "../components/edit/scripts/i
 import { clone, keysToID } from "../components/helpers/array"
 import { addDrawerFolder } from "../components/helpers/dropActions"
 import { history } from "../components/helpers/history"
-import { captureCanvas, getExtension, getFileName, removeExtension, setMediaTracks } from "../components/helpers/media"
+import { captureCanvas, getExtension, getFileName, invalidateMediaPaths, removeExtension, setMediaTracks } from "../components/helpers/media"
 import { getActiveOutputs } from "../components/helpers/output"
 import { loadShows, saveTextCache } from "../components/helpers/setShow"
 import { checkName, getGlobalGroup, getLabelId } from "../components/helpers/show"
@@ -61,6 +61,7 @@ import {
     lessonsLoaded,
     media,
     mediaDownloads,
+    mediaLibraryVersion,
     outputs,
     overlays,
     pdfImports,
@@ -91,6 +92,7 @@ import { setupCloudSync } from "../utils/cloudSync"
 import { newToast } from "../utils/common"
 import { translateText } from "../utils/language"
 import { confirmCustom } from "../utils/popup"
+import { forgetLocalMediaMappings, isCachedLocalPath, noteMediaLibraryVersion } from "../utils/remoteMediaCache"
 import { initializeClosing, saveComplete } from "../utils/save"
 import { invalidateSearchIndex } from "../utils/searchFast"
 import { updateSettings, updateSyncedSettings, updateThemeValues } from "../utils/updateSettings"
@@ -110,14 +112,18 @@ export const mainResponses: MainResponses = {
     [Main.SYNCED_SETTINGS]: (a) => updateSyncedSettings(a),
     [Main.SHOWS]: async (a) => {
         const difference = Object.keys(a).length - Object.keys(get(shows)).length
-        if (difference < 15 && Object.keys(get(shows)).length && difference > 0) {
+        const newShowIds = difference < 15 && Object.keys(get(shows)).length && difference > 0 ? Object.keys(a).filter((id) => !get(shows)[id]) : []
+
+        // the index must be set BEFORE loading: loadShows() marks any id that isn't in
+        // `shows` as not found (red) instead of fetching it, so a show that just arrived
+        // from another client would be flagged without ever being requested
+        shows.set(a)
+
+        if (newShowIds.length) {
             // get new shows & cache their content
-            const newShowIds = Object.keys(a).filter((id) => !get(shows)[id])
             await loadShows(newShowIds)
             newShowIds.forEach((id) => saveTextCache(id, get(showsCache)[id]))
         }
-
-        shows.set(a)
     },
     [Main.STAGE]: (a) => stageShows.set(a),
     [Main.PROJECTS]: (a) => {
@@ -138,6 +144,16 @@ export const mainResponses: MainResponses = {
     [Main.TEMPLATES]: (a) => templates.set(a),
     [Main.EVENTS]: (a) => events.set(a),
     [Main.MEDIA]: (a) => media.set(a),
+    // server trash changed (any client, incl. the expiry sweep): evict stale
+    // resolutions/mappings, then poke drawers + trash views to refresh
+    [Main.MEDIA_LIBRARY_CHANGED]: (a) => {
+        if (a?.paths?.length) {
+            forgetLocalMediaMappings(a.paths)
+            invalidateMediaPaths(a.paths)
+        }
+        noteMediaLibraryVersion(a?.v)
+        mediaLibraryVersion.update((v) => ({ kind: a?.kind || "", n: v.n + 1 }))
+    },
     [Main.THEMES]: (a) => {
         themes.set(Object.keys(a).length ? a : clone(defaultThemes))
 
@@ -232,7 +248,14 @@ export const mainResponses: MainResponses = {
         newToast("settings.restore_finished")
     },
     [ToMain.RECENTLY_ADDED_FILES]: (data) => updateRecentlyAddedFiles(data.paths),
-    [Main.MEDIA_TRACKS]: (data) => setMediaTracks(data),
+    // NOTE: hybrid subtitle probes request with the cache-local path, so the echoed
+    // reply lands here too — ignore it (VideoShow stores tracks under the remote
+    // key itself). Letting cache-local absolute paths into $media would leak them
+    // into the synced store.
+    [Main.MEDIA_TRACKS]: (data) => {
+        if (data?.path && isCachedLocalPath(data.path)) return
+        setMediaTracks(data)
+    },
     [ToMain.API_TRIGGER2]: (data) => triggerAction(data),
     [ToMain.PRESENTATION_STATE]: (data) => presentationData.set(data),
     // TOP BAR

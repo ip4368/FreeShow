@@ -55,7 +55,7 @@
         if (!hasUpdate || !latestVersion) return
 
         const isBeta = latestVersion.includes("-beta")
-        sendMain(Main.URL, isBeta ? "https://github.com/ChurchApps/FreeShow/releases" : "https://freeshow.app/?download")
+        sendMain(Main.URL, "https://github.com/ip4368/FreeShow/releases")
     }
 
     onMount(checkUpdates)

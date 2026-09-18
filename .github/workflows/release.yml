@@ -102,8 +102,9 @@ jobs:
           USE_SYSTEM_FPM: true
         run: npm run release:arm64
 
-  # Headless web server. Independent of the desktop jobs: no Electron, no native
-  # desktop modules, so it needs none of the libfontconfig/uuid/libltc packages.
+  # Headless web server. The packaged output needs no Electron, but `npm ci`
+  # still compiles the repo's required native modules (osr-capture links against
+  # EGL/GLES), so Linux runners need the same system packages as the desktop jobs.
   #
   # Every target is built on its own native runner so the smoke test actually
   # exercises the bundled runtime and the native sharp build it ships.
@@ -136,6 +137,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Install libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev uuid-dev libltc-dev libegl1-mesa-dev libgles2-mesa-dev --fix-missing
 
       - name: Install dependencies
         run: npm ci

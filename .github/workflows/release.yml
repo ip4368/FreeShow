@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - "collab-main"
+      - "collab-main-rebased"
   workflow_dispatch:
 
 jobs:
